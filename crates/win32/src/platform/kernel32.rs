@@ -25,6 +25,8 @@ pub enum Obj {
     Mutex { owner: u32, count: u32 },
     Thread { id: u32, done: bool, code: u32 },
     Heap,
+    /// FindFirstFileA's results and the next one
+    Find { entries: Vec<FindEntry>, next: usize },
 }
 
 pub struct Objects {
@@ -44,7 +46,7 @@ pub fn objects() -> MutexGuard<'static, Objects> {
 
 /// For a savestate's fingerprint (`savestate.rs`): each handle and its kind.
 pub fn object_kinds() -> Vec<(u32, u32)> {
-    objects().map.iter().map(|(&h, o)| (h, match o { Obj::File(_) => 1, Obj::Std(_) => 2, Obj::Event { .. } => 3, Obj::Mutex { .. } => 4, Obj::Thread { .. } => 5, Obj::Heap => 6 })).collect()
+    objects().map.iter().map(|(&h, o)| (h, match o { Obj::File(_) => 1, Obj::Std(_) => 2, Obj::Event { .. } => 3, Obj::Mutex { .. } => 4, Obj::Thread { .. } => 5, Obj::Heap => 6, Obj::Find { .. } => 7 })).collect()
 }
 
 /// What a savestate keeps of the objects: events' state, files' positions.
@@ -156,6 +158,16 @@ fn local_alloc(c: &mut Cpu) -> u32 {
     alloc(arg(c, 1))
 }
 
+/// LocalReAlloc / GlobalReAlloc(handle, size, flags): the handle is the memory; it may move
+/// (as with LMEM_MOVEABLE).
+fn local_realloc(c: &mut Cpu) -> u32 {
+    realloc(arg(c, 0), arg(c, 1))
+}
+
+fn local_size(c: &mut Cpu) -> u32 {
+    block_size(arg(c, 0))
+}
+
 fn local_free(c: &mut Cpu) -> u32 {
     free(arg(c, 0));
     0
@@ -251,6 +263,160 @@ fn mul_div(c: &mut Cpu) -> u32 {
     let half = d.abs() / 2;
     let r = if (p < 0) != (d < 0) { (p - half * p.signum()) / d } else { (p + half * p.signum()) / d };
     r as i32 as u32
+}
+
+/// lstrcpynA(dst, src, n): at most n - 1 characters and the NUL.
+fn lstrcpyn(c: &mut Cpu) -> u32 {
+    let (dst, src, n) = (arg(c, 0), arg(c, 1), arg(c, 2));
+    put_cstr(dst, &cstr(src), n);
+    dst
+}
+
+/// FindResourceA(module, name, type): a block with the data's address and size (HRSRC).
+fn find_resource(c: &mut Cpu) -> u32 {
+    let (h, name, ty) = (arg(c, 0), arg(c, 1), arg(c, 2));
+    let (name, ty) = (super::ResId::from_guest(name, cstr), super::ResId::from_guest(ty, cstr));
+    match super::resource_in(h, ty, name) {
+        Some((at, size)) => {
+            let p = alloc(8);
+            mem().wr32(p, at);
+            mem().wr32(p + 4, size);
+            p
+        }
+        None => {
+            set_last_error(1814); // ERROR_RESOURCE_NAME_NOT_FOUND
+            0
+        }
+    }
+}
+
+/// LoadResource(module, HRSRC): the data's address (LockResource gives it back as it is).
+fn load_resource(c: &mut Cpu) -> u32 {
+    let r = arg(c, 1);
+    if r == 0 { 0 } else { mem().rd32(r) }
+}
+
+fn sizeof_resource(c: &mut Cpu) -> u32 {
+    let r = arg(c, 1);
+    if r == 0 { 0 } else { mem().rd32(r + 4) }
+}
+
+/// GetSystemDirectoryA(buf, n): Windows 98's.
+fn get_system_directory(c: &mut Cpu) -> u32 {
+    let (buf, n) = (arg(c, 0), arg(c, 1));
+    let dir = r"C:\WINDOWS\SYSTEM";
+    if dir.len() as u32 >= n {
+        return dir.len() as u32 + 1;
+    }
+    put_cstr(buf, dir, n)
+}
+
+/// Message `id` of a module's message table (RT_MESSAGETABLE 1): blocks of (low, high,
+/// offset), entries of (length, flags: 1 is UTF-16, text).
+fn message_text(base: u32, id: u32) -> Option<String> {
+    let (at, _) = super::resource_in(base, super::ResId::Id(11), super::ResId::Id(1))?;
+    let m = mem();
+    for b in 0..m.rd32(at) {
+        let blk = at + 4 + 12 * b;
+        let (lo, hi, mut e) = (m.rd32(blk), m.rd32(blk + 4), at + m.rd32(blk + 8));
+        if !(lo..=hi).contains(&id) {
+            continue;
+        }
+        for _ in lo..id {
+            e += m.rd16(e) as u32;
+        }
+        let (len, wide) = (m.rd16(e) as u32, m.rd16(e + 2) & 1 != 0);
+        let body = e + 4;
+        let s = if wide {
+            let units: Vec<u16> = (0..(len - 4) / 2).map(|k| m.rd16(body + 2 * k)).take_while(|&u| u != 0).collect();
+            String::from_utf16_lossy(&units)
+        } else {
+            (0..len - 4).map(|k| m.rd8(body + k)).take_while(|&b| b != 0).map(|b| b as char).collect()
+        };
+        return Some(s);
+    }
+    None
+}
+
+/// FormatMessageA(flags, source, id, language, buf, n, args): from a module's message table
+/// (FROM_HMODULE 0x800, else the EXE) or a string (FROM_STRING 0x400); inserts %1.. from a
+/// va_list or an array (ARGUMENT_ARRAY 0x2000), unless IGNORE_INSERTS (0x200). System
+/// messages (FROM_SYSTEM 0x1000) are "Error n". ALLOCATE_BUFFER (0x100) writes a new buffer's
+/// address to `buf`.
+fn format_message(c: &mut Cpu) -> u32 {
+    let (flags, src, id, buf, n, args) = (arg(c, 0), arg(c, 1), arg(c, 2), arg(c, 4), arg(c, 5), arg(c, 6));
+    let text = if flags & 0x400 != 0 {
+        Some(cstr(src))
+    } else if flags & 0x800 != 0 {
+        message_text(src, id)
+    } else if flags & 0x1000 != 0 {
+        Some(format!("Error {id}\r\n"))
+    } else {
+        message_text(super::IMAGE_BASE, id)
+    };
+    let Some(text) = text else {
+        set_last_error(317); // ERROR_MR_MID_NOT_FOUND
+        return 0;
+    };
+    let m = mem();
+    let insert = |k: u32| -> u32 {
+        if args == 0 {
+            0
+        } else if flags & 0x2000 != 0 {
+            m.rd32(args + 4 * k)
+        } else {
+            // a va_list*: the list starts where it points
+            m.rd32(m.rd32(args) + 4 * k)
+        }
+    };
+    let mut out = String::new();
+    let ch: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < ch.len() {
+        if ch[i] != '%' || i + 1 >= ch.len() || flags & 0x200 != 0 {
+            out.push(ch[i]);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        match ch[i] {
+            'n' => out += "\r\n",
+            '0' => break,
+            d if d.is_ascii_digit() => {
+                let mut k = 0;
+                while i < ch.len() && ch[i].is_ascii_digit() {
+                    k = k * 10 + ch[i].to_digit(10).unwrap();
+                    i += 1;
+                }
+                // %k!fmt! : a printf format, default s
+                let mut fmt = "%s".to_string();
+                if i < ch.len() && ch[i] == '!' {
+                    if let Some(end) = ch[i + 1..].iter().position(|&c| c == '!') {
+                        fmt = format!("%{}", ch[i + 1..i + 1 + end].iter().collect::<String>());
+                        i += end + 2;
+                    }
+                }
+                let v = insert(k.saturating_sub(1));
+                out += &super::printf(&fmt, |_| v);
+                continue;
+            }
+            other => out.push(other),
+        }
+        i += 1;
+    }
+    let len = out.len() as u32;
+    if flags & 0x100 != 0 {
+        let p = alloc(len.max(n) + 1);
+        put_cstr(p, &out, len + 1);
+        m.wr32(buf, p);
+    } else {
+        put_cstr(buf, &out, n);
+    }
+    len.min(if flags & 0x100 != 0 { len } else { n.saturating_sub(1) })
+}
+
+fn lstrcmp(c: &mut Cpu) -> u32 {
+    cstr(arg(c, 0)).cmp(&cstr(arg(c, 1))) as i32 as u32
 }
 
 fn lstrcat(c: &mut Cpu) -> u32 {
@@ -424,6 +590,17 @@ fn raise_exception(c: &mut Cpu) -> u32 {
 
 fn get_logical_drives(_: &mut Cpu) -> u32 {
     1 << 2 | 1 << 3 // C: and D:
+}
+
+/// GetLogicalDriveStringsA(n, buf): "C:\", "D:\" (the CD), each NUL-terminated, then a NUL.
+fn get_logical_drive_strings(c: &mut Cpu) -> u32 {
+    let (n, buf) = (arg(c, 0), arg(c, 1));
+    let s = b"C:\\\0D:\\\0\0";
+    if n < s.len() as u32 {
+        return s.len() as u32;
+    }
+    mem().slice(buf, s.len()).copy_from_slice(s);
+    s.len() as u32 - 1
 }
 
 fn get_drive_type(c: &mut Cpu) -> u32 {
@@ -1121,6 +1298,212 @@ fn create_file(c: &mut Cpu) -> u32 {
     }
 }
 
+/// A file or folder found by FindFirstFileA.
+pub struct FindEntry {
+    name: String,
+    attributes: u32,
+    size: u64,
+    time: u64,
+}
+
+/// FILE_ATTRIBUTE_ flags: directory 0x10, read-only 1, else normal 0x80.
+fn attributes(md: &std::fs::Metadata) -> u32 {
+    if md.is_dir() {
+        0x10
+    } else if md.permissions().readonly() {
+        1
+    } else {
+        0x80
+    }
+}
+
+/// A host file time as a FILETIME.
+fn file_time(t: std::time::SystemTime) -> u64 {
+    let d = t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    d.as_nanos() as u64 / 100 + 116_444_736_000_000_000
+}
+
+/// `*` and `?` matched without case; `*.*` matches every name.
+fn wildcard(mask: &str, name: &str) -> bool {
+    fn go(m: &[u8], n: &[u8]) -> bool {
+        match (m.first(), n.first()) {
+            (None, None) => true,
+            (Some(b'*'), _) => go(&m[1..], n) || !n.is_empty() && go(m, &n[1..]),
+            (Some(b'?'), Some(_)) => go(&m[1..], &n[1..]),
+            (Some(a), Some(b)) => a.eq_ignore_ascii_case(b) && go(&m[1..], &n[1..]),
+            _ => false,
+        }
+    }
+    mask == "*.*" || go(mask.as_bytes(), name.as_bytes())
+}
+
+/// WIN32_FIND_DATAA: attributes, three times, size, reserved, name (260), short name (14).
+fn write_find_data(p: u32, e: &FindEntry) {
+    let m = mem();
+    m.slice(p, 320).fill(0);
+    m.wr32(p, e.attributes);
+    for k in 0..3 {
+        m.wr32(p + 4 + 8 * k, e.time as u32);
+        m.wr32(p + 8 + 8 * k, (e.time >> 32) as u32);
+    }
+    m.wr32(p + 28, (e.size >> 32) as u32);
+    m.wr32(p + 32, e.size as u32);
+    put_cstr(p + 44, &e.name, 260);
+}
+
+fn find_first_file(c: &mut Cpu) -> u32 {
+    let (pattern, data) = (cstr(arg(c, 0)), arg(c, 1));
+    let (dir, mask) = match pattern.rfind(['\\', '/']) {
+        Some(k) => (&pattern[..k + 1], &pattern[k + 1..]),
+        None => ("", pattern.as_str()),
+    };
+    let entry = |name: String, md: &std::fs::Metadata| FindEntry { name, attributes: attributes(md), size: md.len(), time: md.modified().map_or(0, file_time) };
+    let mut entries = Vec::new();
+    if !mask.contains(['*', '?']) {
+        // a path without wildcards: that file or folder itself
+        if let Ok(md) = std::fs::metadata(host_path(&pattern)) {
+            entries.push(entry(mask.to_string(), &md));
+        }
+    } else if let Ok(list) = std::fs::read_dir(host_path(if dir.is_empty() { "." } else { dir })) {
+        for e in list.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if wildcard(mask, &name) {
+                if let Ok(md) = e.metadata() {
+                    entries.push(entry(name, &md));
+                }
+            }
+        }
+    }
+    entries.sort_by_key(|e| e.name.to_lowercase());
+    if super::trace_api() {
+        log!("FindFirstFileA {pattern}: {} found", entries.len());
+    }
+    let Some(first) = entries.first() else {
+        set_last_error(ERROR_FILE_NOT_FOUND);
+        return INVALID_HANDLE;
+    };
+    write_find_data(data, first);
+    objects().add(Obj::Find { entries, next: 1 })
+}
+
+fn find_next_file(c: &mut Cpu) -> u32 {
+    let (h, data) = (arg(c, 0), arg(c, 1));
+    let mut g = objects();
+    let Some(Obj::Find { entries, next }) = g.map.get_mut(&h) else {
+        drop(g);
+        set_last_error(ERROR_INVALID_HANDLE);
+        return 0;
+    };
+    match entries.get(*next) {
+        Some(e) => {
+            write_find_data(data, e);
+            *next += 1;
+            1
+        }
+        None => {
+            drop(g);
+            set_last_error(18); // ERROR_NO_MORE_FILES
+            0
+        }
+    }
+}
+
+fn find_close(c: &mut Cpu) -> u32 {
+    objects().map.remove(&arg(c, 0)).is_some() as u32
+}
+
+fn get_file_attributes(c: &mut Cpu) -> u32 {
+    match std::fs::metadata(host_path(&cstr(arg(c, 0)))) {
+        Ok(md) => attributes(&md),
+        Err(_) => {
+            set_last_error(ERROR_FILE_NOT_FOUND);
+            INVALID_HANDLE
+        }
+    }
+}
+
+fn get_file_size(c: &mut Cpu) -> u32 {
+    let (h, hi) = (arg(c, 0), arg(c, 1));
+    let Some(f) = file_of(h) else {
+        set_last_error(ERROR_INVALID_HANDLE);
+        return INVALID_HANDLE;
+    };
+    let n = f.lock().unwrap().metadata().map_or(0, |m| m.len());
+    if hi != 0 {
+        mem().wr32(hi, (n >> 32) as u32);
+    }
+    n as u32
+}
+
+/// GetCurrentDirectoryA(n, buf): the installed game's folder (relative paths are the game
+/// folder's, `host_path`).
+fn get_current_directory(c: &mut Cpu) -> u32 {
+    let (n, buf) = (arg(c, 0), arg(c, 1));
+    let dir = crate::game::id().install_dir;
+    if dir.len() as u32 >= n {
+        return dir.len() as u32 + 1;
+    }
+    put_cstr(buf, dir, n)
+}
+
+/// SetCurrentDirectoryA: relative paths stay the game folder's.
+fn set_current_directory(c: &mut Cpu) -> u32 {
+    if super::trace_api() {
+        log!("SetCurrentDirectoryA {}", cstr(arg(c, 0)));
+    }
+    1
+}
+
+/// GetFullPathNameA(name, n, buf, &file part).
+fn get_full_path_name(c: &mut Cpu) -> u32 {
+    let (name, n, buf, part) = (cstr(arg(c, 0)), arg(c, 1), arg(c, 2), arg(c, 3));
+    let full = if name.len() >= 2 && name.as_bytes()[1] == b':' {
+        name.clone()
+    } else if let Some(rest) = name.strip_prefix(['\\', '/']) {
+        format!("C:\\{rest}")
+    } else {
+        format!("{}\\{}", crate::game::id().install_dir, name.trim_start_matches(".\\"))
+    };
+    if full.len() as u32 >= n {
+        return full.len() as u32 + 1;
+    }
+    let len = put_cstr(buf, &full, n);
+    if part != 0 {
+        let k = full.rfind('\\').map_or(0, |k| k + 1) as u32;
+        mem().wr32(part, buf + k);
+    }
+    len
+}
+
+fn create_directory(c: &mut Cpu) -> u32 {
+    let p = host_path(&cstr(arg(c, 0)));
+    if p.exists() {
+        set_last_error(183); // ERROR_ALREADY_EXISTS
+        return 0;
+    }
+    std::fs::create_dir(&p).is_ok() as u32
+}
+
+fn delete_file(c: &mut Cpu) -> u32 {
+    if std::fs::remove_file(host_path(&cstr(arg(c, 0)))).is_ok() {
+        1
+    } else {
+        set_last_error(ERROR_FILE_NOT_FOUND);
+        0
+    }
+}
+
+/// GetDiskFreeSpaceA(root, sectors a cluster, bytes a sector, free clusters, clusters): 1 GB
+/// free of 2 GB.
+fn get_disk_free_space(c: &mut Cpu) -> u32 {
+    for (k, v) in [(1, 8), (2, 512), (3, 262_144), (4, 524_288)] {
+        if arg(c, k) != 0 {
+            mem().wr32(arg(c, k), v);
+        }
+    }
+    1
+}
+
 fn file_of(h: u32) -> Option<Arc<Mutex<std::fs::File>>> {
     match objects().map.get(&h) {
         Some(Obj::File(f)) => Some(f.clone()),
@@ -1288,6 +1671,13 @@ pub const IMPORTS: &[Import] = &[
     ("GetVersionExA", 1, get_version_ex),
     ("LocalAlloc", 2, local_alloc),
     ("LocalFree", 1, local_free),
+    ("LocalReAlloc", 3, local_realloc),
+    ("LocalLock", 1, global_same),
+    ("LocalUnlock", 1, ret1),
+    ("LocalSize", 1, local_size),
+    ("GlobalReAlloc", 3, local_realloc),
+    ("GlobalSize", 1, local_size),
+    ("GlobalFlags", 1, ret0),
     ("GetSystemTime", 1, get_local_time),
     ("GetLocalTime", 1, get_local_time),
     ("FileTimeToLocalFileTime", 2, file_time_to_local_file_time),
@@ -1302,6 +1692,26 @@ pub const IMPORTS: &[Import] = &[
     ("IsDBCSLeadByte", 1, ret0),
     ("MulDiv", 3, mul_div),
     ("lstrcatA", 2, lstrcat),
+    ("lstrcpynA", 3, lstrcpyn),
+    ("lstrcmpA", 2, lstrcmp),
+    ("FindResourceA", 3, find_resource),
+    ("FindFirstFileA", 2, find_first_file),
+    ("FindNextFileA", 2, find_next_file),
+    ("FindClose", 1, find_close),
+    ("GetFileAttributesA", 1, get_file_attributes),
+    ("GetFileSize", 2, get_file_size),
+    ("GetCurrentDirectoryA", 2, get_current_directory),
+    ("SetCurrentDirectoryA", 1, set_current_directory),
+    ("GetFullPathNameA", 4, get_full_path_name),
+    ("CreateDirectoryA", 2, create_directory),
+    ("DeleteFileA", 1, delete_file),
+    ("GetDiskFreeSpaceA", 5, get_disk_free_space),
+    ("FormatMessageA", 7, format_message),
+    ("GetSystemDirectoryA", 2, get_system_directory),
+    ("LoadResource", 2, load_resource),
+    ("LockResource", 1, first_arg),
+    ("SizeofResource", 2, sizeof_resource),
+    ("FreeResource", 1, ret1),
     ("lstrcmpiA", 2, lstrcmpi),
     ("GlobalMemoryStatus", 1, global_memory_status),
     ("InterlockedExchange", 2, interlocked_exchange),
@@ -1346,6 +1756,7 @@ pub const IMPORTS: &[Import] = &[
     ("GetProcAddress", 2, get_proc_address),
     ("GetLogicalDrives", 0, get_logical_drives),
     ("GetDriveTypeA", 1, get_drive_type),
+    ("GetLogicalDriveStringsA", 2, get_logical_drive_strings),
     ("GetVolumeInformationA", 8, get_volume_information),
     ("GetACP", 0, get_acp),
     ("GetOEMCP", 0, get_oemcp),

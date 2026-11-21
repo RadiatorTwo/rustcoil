@@ -32,7 +32,7 @@ static ID: Identity = Identity {
     folder: "Recoil",
     cd_folder: None,
     // the CD's volume label and serial, if the game checks for its CD (GetVolumeInformationA)
-    cd: None,
+    cd: Some(("RECOIL", 0x1999_0101)),
     computer_name: "PC",
     // the key Westwood's installer made (the EXE reads SOFTWARE\Westwood\Recoil)
     registry_key: r"HKEY_LOCAL_MACHINE\Software\Westwood\Recoil",
@@ -66,7 +66,13 @@ impl Game for MyGame {
 
     fn dlls(&self) -> &'static [(&'static str, u32)] {
         // the MFC and C runtime from the CD (group "Msvc DLLs"), at their own bases
-        &[("MSVCRT.DLL", 0x7800_0000), ("MSVCP50.DLL", 0x780c_0000), ("mfc42.dll", 0x5f40_0000)]
+        &[
+            ("MSVCRT.DLL", 0x7800_0000),
+            ("MSVCP50.DLL", 0x780c_0000),
+            ("mfc42.dll", 0x5f40_0000),
+            // the game's messages (it wants 0x10000000, inside our heap)
+            ("messages.dll", 0x5f30_0000),
+        ]
     }
 
     fn smc(&self) -> SmcSpec {

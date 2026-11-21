@@ -69,3 +69,26 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
   (GetClassInfoA), the CBT hook MFC sets around CreateWindowEx (`AfxHookWindowCreate`:
   SetWindowsHookExA(WH_CBT) and subclassing by SetWindowLongA(GWL_WNDPROC)), CallWindowProcA,
   window properties. 423 imports are missing at start; most are never called.
+- MFC window layer (2026-11-21): user32 classes with their WNDCLASS (GetClassInfoA), the WH_CBT
+  hook called in CreateWindowExA before WM_NCCREATE (MFC subclasses there), window extra bytes,
+  properties, CallWindowProcA, rectangles, DeferWindowPos; menus as items (`platform/menu.rs`,
+  MENU resources parsed); gdi32 objects (pens, brushes, fonts, DCs, bitmaps from resources;
+  nothing is drawn yet); resources of any module (`resource_in`, FindResourceA, LoadStringA,
+  message tables for FormatMessageA); FindFirstFileA and file information; system DLL ordinals
+  (DSOUND #1, WS2_32 #115/#116, DPLAYX #4).
+- messages.dll (the game's texts, a message table) wants base 0x10000000, inside our heap: it is
+  loaded at 0x5f300000.
+- The CD check: GetLogicalDriveStringsA, D: is the CD, label `RECOIL` (`Identity::cd`), and
+  `D:\video\intro_01.avi` must exist: the CD's Video folder is copied to `game_files\Video`
+  (`host_path` looks in the game folder's parent).
+- DirectX 6 check (GetDXVersion at 0x40c38d): QueryInterface of IDirectDrawSurface4 on a surface
+  answers with the surface itself (the IID is used nowhere else in the EXE).
+- Now: the game runs its main loop (0x442d50: PeekMessage, else a frame), but nothing starts.
+  `[app+0xD0]` stays 0, so it calls WaitMessage. 0x442c60 (from 0x42e4c0) and 0x442cc0 set it.
+  They are reached from WM_COMMAND handlers: 0x65 (0x4307c0), 0x9c51, 0x9c53 (Multi Player
+  Start), 0x9c55.. (campaigns). The menu that holds them (Game / Campaigns / Options / Help, a
+  developer menu) is removed at start (RemoveMenu). Open: what sends the start command in the
+  release? Candidates: a dialog, the end of the intro video, or the registry
+  (HKCU\SOFTWARE\Zipper\RECOIL\1.0, which MFC opens for its settings). The main window draws
+  the bitmap GAMEBMP (648x507) with StretchBlt; GDI drawing is not shown yet. The game writes
+  recoil.err and recoil.out (empty so far). Glide is not opened yet.

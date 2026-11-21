@@ -21,6 +21,7 @@ pub mod glide;
 pub mod hd;
 pub mod kernel32;
 pub mod menupad;
+pub mod menu;
 pub mod misc;
 pub mod module;
 pub mod record;
@@ -981,13 +982,29 @@ pub fn host_path(guest: &str) -> PathBuf {
 
 // ---- process start -------------------------------------------------------------------------------
 
+/// The names of system DLL exports some games import by ordinal.
+fn ordinal_name(dll: &str, name: &str) -> Option<&'static str> {
+    let n: u32 = name.strip_prefix('#')?.parse().ok()?;
+    Some(match (dll.to_ascii_uppercase().as_str(), n) {
+        ("DSOUND.DLL", 1) => "DirectSoundCreate",
+        ("DSOUND.DLL", 2) => "DirectSoundEnumerateA",
+        ("DPLAYX.DLL", 1) => "DirectPlayCreate",
+        ("DPLAYX.DLL", 2) => "DirectPlayEnumerateA",
+        ("DPLAYX.DLL", 4) => "DirectPlayLobbyCreateA",
+        ("WS2_32.DLL" | "WSOCK32.DLL", 115) => "WSAStartup",
+        ("WS2_32.DLL" | "WSOCK32.DLL", 116) => "WSACleanup",
+        _ => return None,
+    })
+}
+
 pub(crate) fn find_import(dll: &str, name: &str) -> Option<&'static Import> {
+    let name = ordinal_name(dll, name).unwrap_or(name);
     if let Some(i) = crate::game::game().import(dll, name) {
         return Some(i);
     }
     let tables: &[&[Import]] = match dll.to_ascii_uppercase().as_str() {
         "KERNEL32.DLL" => &[kernel32::IMPORTS],
-        "USER32.DLL" => &[dialog::IMPORTS, user32::IMPORTS],
+        "USER32.DLL" => &[dialog::IMPORTS, user32::IMPORTS, menu::IMPORTS],
         "GDI32.DLL" => &[gdi32::IMPORTS],
         "ADVAPI32.DLL" => &[advapi32::IMPORTS],
         "DDRAW.DLL" => &[ddraw::IMPORTS],
@@ -1234,6 +1251,30 @@ pub fn printf(fmt: &str, mut arg: impl FnMut(u32) -> u32) -> String {
 
 /// A resource of the loaded EXE (first language): guest address and size of its data.
 pub fn resource(ty: ResId, id: ResId) -> Option<(u32, u32)> {
+    resource_in(IMAGE_BASE, ty, id)
+}
+
+/// A resource of the module at `base` (the EXE or a game DLL; 0 is the EXE).
+pub fn resource_in(base: u32, ty: ResId, id: ResId) -> Option<(u32, u32)> {
+    let base = if base == 0 { IMAGE_BASE } else { base };
+    if base != IMAGE_BASE && module::module_at(base).is_none() {
+        return None;
+    }
     let m = mem();
-    recomp::image::find_resource(&|a| m.rd8(a), IMAGE_BASE, ty, id)
+    recomp::image::find_resource(&|a| m.rd8(a), base, ty, id)
+}
+
+/// String `id` of a module's string table (RT_STRING blocks of 16 counted UTF-16 strings).
+pub fn load_string(base: u32, id: u32) -> Option<String> {
+    let (mut at, _) = resource_in(base, ResId::Id(6), ResId::Id(id / 16 + 1))?;
+    let m = mem();
+    for _ in 0..id % 16 {
+        at += 2 + 2 * m.rd16(at) as u32;
+    }
+    let n = m.rd16(at) as u32;
+    if n == 0 {
+        return None;
+    }
+    let units: Vec<u16> = (0..n).map(|k| m.rd16(at + 2 + 2 * k)).collect();
+    Some(String::from_utf16_lossy(&units))
 }
