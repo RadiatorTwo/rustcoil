@@ -18,7 +18,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 
 ## 3. Playing
 
-- [ ] the first level starts and plays
+- [ ] the first level starts and plays (it starts, textured; the player's tank is black)
 - [ ] sound, music, videos
 - [ ] saving and loading
 - [ ] the whole game played through
@@ -137,3 +137,17 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   DIBSECTION header) were missing. Main menu > New Game (name, difficulty) > Start reaches the
   campaign briefing (Campaign 1, Mission 3 "Island Storm" shown, map). Seen: pieces of the New
   Game screen ("MED", "HA") stay in the briefing's empty places: to check (LFB, or a clear).
+- First mission (2026-11-22): the briefing waits for a key with Sleep and DirectInput's
+  GetDeviceData (0x404120), without reading messages: DirectInput reads now fetch the window's
+  input themselves (`user32::poll_input`). Then the mission loads and runs. Glide fixes in the
+  kit's copy: (1) the game downloads 621 textures at once; 64 layers dropped most: the arrays
+  grow (64 .. 2048 layers). (2) glGenerateMipmap over the whole array after every download took
+  the NVIDIA driver down ("Unable to recover from a kernel exception", exit 0xC0000409): mipmaps
+  are made on the CPU per texture (`half`). (3) Glide's s/t go 0..256 over the longer side for
+  every texture size: scaled by size / 256 (the earlier games had 256x256 only). (4) Recoil
+  leaves tmu 0's oow at 0: the texture rectangle used 1 instead of the vertex's oow and clamped
+  everything to a texel or two. (5) Repeated textures (ground) read outside the texture in the
+  layer with mipmaps on: wrapped inside the texture in the shader. A scripted run
+  (`RUSTCOIL_INPUT`) no longer catches the user's mouse.
+  Open: the player's tank is black; the HUD's radar is empty; grTexCombine alpha ZERO is taken
+  as LOCAL.
