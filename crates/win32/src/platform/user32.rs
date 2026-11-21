@@ -958,6 +958,11 @@ fn get_dlg_ctrl_id(c: &mut Cpu) -> u32 {
     st().wins.get(&arg(c, 0)).map_or(0, |w| w.id)
 }
 
+/// The mouse in the game's screen pixels, as the last mouse message had it.
+pub fn mouse_pos() -> (i32, i32) {
+    st().mouse
+}
+
 fn get_cursor_pos(c: &mut Cpu) -> u32 {
     let (x, y) = st().mouse;
     mem().wr32(arg(c, 0), x as u32);
@@ -1134,6 +1139,7 @@ fn show_cursor(c: &mut Cpu) -> u32 {
 
 pub const IMPORTS: &[Import] = &[
     ("RegisterWindowMessageA", 1, register_window_message),
+    ("DrawTextA", 5, super::gdi32::draw_text_a),
     ("GetSysColor", 1, super::gdi32::get_sys_color),
     ("GetSysColorBrush", 1, super::gdi32::get_sys_color_brush),
     ("RegisterClipboardFormatA", 1, register_window_message),

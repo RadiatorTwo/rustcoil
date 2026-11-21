@@ -12,9 +12,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
 
 ## 2. Window and menu
 
-- [ ] the game opens its window (missing imports implemented in win32, or in this crate)
-- [ ] the main menu shows (`RUSTCOIL_SHOT`)
-- [ ] the menu answers to mouse and keys (`RUSTCOIL_INPUT`)
+- [x] the game opens its window (missing imports implemented in win32, or in this crate)
+- [x] the main menu shows (`RUSTCOIL_SHOT`)
+- [x] the menu answers to the mouse (`RUSTCOIL_INPUT`); keys in the menu: not tried
 
 ## 3. Playing
 
@@ -125,3 +125,15 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
   converting the videos once at setup.
 - **The main menu shows** (Glide, 640x480): New Game, Load Game, Options, Controls, Credits,
   Quit. Next: input in the menu, starting a mission, sound, CD music.
+- Menu input (2026-11-21): the menu's PumpA / PumpB are videos drawn as textures; unopened (no
+  Indeo 5) they have no frames and object_advance_time (0x4c35b0) divided by zero: the hook leaves
+  such a texture out. The mouse is DirectInput (GetDeviceState, DIMOUSESTATE): the game moves its
+  own cursor ([0x565b40], [0x565b44]) by the motion times a sensitivity (about 1.2), so in a
+  window it drifted from the system pointer. The hook on mouse_move (0x470570) puts it where the
+  pointer is while the cursor is kept on the screen ([0x565b6c] = 0: menus); the motion stays for
+  the game. Glide draws at the window's size, so window positions were in its pixels, not the
+  game's 640x480: `window::set_screen` (from grSstWinOpen) maps them to the game's screen.
+  DrawTextA (word wrap, alignment, DT_CALCRECT) and GetObjectA of a DIB section (bmBits, the
+  DIBSECTION header) were missing. Main menu > New Game (name, difficulty) > Start reaches the
+  campaign briefing (Campaign 1, Mission 3 "Island Storm" shown, map). Seen: pieces of the New
+  Game screen ("MED", "HA") stay in the briefing's empty places: to check (LFB, or a clear).

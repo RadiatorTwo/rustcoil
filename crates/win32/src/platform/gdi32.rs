@@ -334,6 +334,86 @@ fn text_out(c: &mut Cpu) -> u32 {
     1
 }
 
+/// The lines DrawTextA lays out: `&` marks removed (DT_NOPREFIX 0x800 keeps them), split at
+/// line ends unless DT_SINGLELINE (0x20), and with DT_WORDBREAK (0x10) wrapped at spaces to
+/// `width`.
+fn text_lines(k: u32, s: &[u8], flags: u32, width: i32) -> Vec<Vec<u8>> {
+    let mut t = Vec::with_capacity(s.len());
+    let mut it = s.iter().copied().peekable();
+    while let Some(b) = it.next() {
+        if b == b'&' && flags & 0x800 == 0 {
+            if let Some(n) = it.next() {
+                t.push(n);
+            }
+        } else {
+            t.push(b);
+        }
+    }
+    let raw: Vec<Vec<u8>> = if flags & 0x20 != 0 {
+        vec![t.into_iter().filter(|&b| b != b'\r' && b != b'\n').collect()]
+    } else {
+        t.split(|&b| b == b'\n').map(|l| l.iter().copied().filter(|&b| b != b'\r').collect()).collect()
+    };
+    if flags & 0x10 == 0 {
+        return raw;
+    }
+    let mut out = Vec::new();
+    for l in raw {
+        let mut line: Vec<u8> = Vec::new();
+        for word in l.split(|&b| b == b' ') {
+            let mut try_ = line.clone();
+            if !try_.is_empty() {
+                try_.push(b' ');
+            }
+            try_.extend_from_slice(word);
+            if !line.is_empty() && text::extent(k, &try_).0 > width {
+                out.push(std::mem::take(&mut line));
+                line.extend_from_slice(word);
+            } else {
+                line = try_;
+            }
+        }
+        out.push(line);
+    }
+    out
+}
+
+/// DrawTextA(dc, text, n, rect, flags): lines in the rectangle, left, centred (DT_CENTER 1) or
+/// right (DT_RIGHT 2); a single line also centred (DT_VCENTER 4) or at the bottom (DT_BOTTOM
+/// 8); cut to the rectangle unless DT_NOCLIP (0x100). DT_CALCRECT (0x400) only measures: the
+/// rectangle gets the text's size. Returns the text's height.
+pub fn draw_text_a(c: &mut Cpu) -> u32 {
+    let (dc, s, n, rect, flags) = (arg(c, 0), arg(c, 1), arg(c, 2), arg(c, 3), arg(c, 4));
+    let m = mem();
+    let [l, t, r, b] = [0, 4, 8, 12].map(|o| m.rd32(rect + o) as i32);
+    let k = dc_font(dc);
+    let lh = text::metrics(k).height;
+    let lines = text_lines(k, &text_arg(s, n), flags, r - l);
+    let h = lh * lines.len() as i32;
+    if flags & 0x400 != 0 {
+        let w = lines.iter().map(|x| text::extent(k, x).0).max().unwrap_or(0);
+        m.wr32(rect + 8, (l + w) as u32);
+        m.wr32(rect + 12, (t + h) as u32);
+        return h as u32;
+    }
+    let y0 = match (flags & 0x20 != 0, flags & 0xc) {
+        (true, 4) | (true, 0xc) => t + (b - t - h) / 2,
+        (true, 8) => b - h,
+        _ => t,
+    };
+    let clip = (flags & 0x100 == 0).then_some([l, t, r, b]);
+    for (i, line) in lines.iter().enumerate() {
+        let w = text::extent(k, line).0;
+        let x = match flags & 3 {
+            1 => l + (r - l - w) / 2,
+            2 => r - w,
+            _ => l,
+        };
+        draw_text(dc, (x, y0 + lh * i as i32), line, None, None, clip);
+    }
+    h as u32
+}
+
 /// ExtTextOutA(dc, x, y, options, rect, text, n, dx): ETO_OPAQUE (2) fills the rectangle with
 /// the background colour, ETO_CLIPPED (4) cuts the text to it.
 fn ext_text_out(c: &mut Cpu) -> u32 {
@@ -521,6 +601,35 @@ fn get_object(c: &mut Cpu) -> u32 {
             m.wr16(p + 18, bpp as u16);
             m.wr32(p + 20, info + m.rd32(info) + 4 * colors);
             24
+        }
+        Some(Obj::Dib(d)) if n >= 24 => {
+            // BITMAP with the pixels' address; DIBSECTION (84 bytes) adds the header (top-down,
+            // as kept), the 16-bit masks, no section
+            m.wr32(p, 0);
+            m.wr32(p + 4, d.w);
+            m.wr32(p + 8, d.h);
+            m.wr32(p + 12, d.stride);
+            m.wr16(p + 16, 1);
+            m.wr16(p + 18, d.bpp as u16);
+            m.wr32(p + 20, d.bits);
+            if n < 84 {
+                return 24;
+            }
+            m.slice(p + 24, 60).fill(0);
+            m.wr32(p + 24, 40);
+            m.wr32(p + 28, d.w);
+            m.wr32(p + 32, (d.h as i32).wrapping_neg() as u32);
+            m.wr16(p + 36, 1);
+            m.wr16(p + 38, d.bpp as u16);
+            if d.bpp == 16 {
+                let masks = if d.g6 { [0xf800, 0x07e0, 0x001f] } else { [0x7c00, 0x03e0, 0x001f] };
+                m.wr32(p + 40, 3); // BI_BITFIELDS
+                for (k, v) in masks.into_iter().enumerate() {
+                    m.wr32(p + 64 + 4 * k as u32, v);
+                }
+            }
+            m.wr32(p + 44, d.stride * d.h);
+            84
         }
         _ => 0,
     }

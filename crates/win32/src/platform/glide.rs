@@ -1554,6 +1554,7 @@ fn sst_win_open(c: &mut Cpu) -> u32 {
         _ => (640, 480),
     };
     log!("glide: grSstWinOpen {w}x{h}");
+    super::window::set_screen(Some((w, h)));
     if !super::window::gl_here() {
         return 0;
     }
@@ -1578,6 +1579,7 @@ fn sst_win_open(c: &mut Cpu) -> u32 {
 }
 
 fn sst_win_close(_: &mut Cpu) -> u32 {
+    super::window::set_screen(None);
     with(|g, gl| unsafe {
         // this thread's objects; other threads' are left (their contexts are not current here)
         if let Some(l) = g.locals.remove(&thread_id()) {
