@@ -41,8 +41,25 @@ boundaries (`data/functions.json`) and our notes by address (`data/symbols.txt`)
 
 ## Known facts about the game
 
-(addresses, threads, renderer, CD check, file formats: add as they are learned)
+Details and the history: PLAN.md, section "Learned".
+
+- Game files: the CD image (.cue + 5 .bin) is in `game_files/`; the game only in an
+  InstallShield 5 cab (`rtools iso <bin> --extract <dir>`, `rtools iscab data1.cab --extract
+  <dir>`). `game_files/Recoil` = the cab's groups; `game_files/Video` = the CD's Video folder.
+- EXE: `recoil3dfx.exe` (Glide 2), an MFC 4.2 application. `Game::dlls` loads MSVCRT.DLL,
+  MSVCP50.DLL, mfc42.dll (own bases) and messages.dll (at 0x5f300000; it wants 0x10000000,
+  inside our heap). They are compiled with the EXE (`platform/module.rs`).
+- CD check: drive D:, label `RECOIL`, `D:\video\intro_01.avi`. DirectX 6 check at 0x40c38d.
+- Launcher: the main window (GAMEBMP + menu) is skipped. The hook on CRecoilApp::Run (0x442d50,
+  `src/hooks.rs`) posts WM_COMMAND Card 1 (0x9c72), 640x480 (0x209), Start (0x68).
+- Fonts: built by the game with GDI text into a DIB (`platform/text.rs`, Eurostile .ttf).
+- Videos: AVI Indeo 5, not played yet (AVI open fails, the game goes on). CD music: MCI says
+  "no device" for now.
+- The game writes `recoil.err` / `recoil.out` in its folder.
+- Test run: `target\release\rustcoil.exe game_files\Recoil\recoil3dfx.exe` with
+  `RUSTCOIL_SHOT=...{t}.png`; it reaches the main menu in about 50 s (no video).
 
 ## Next steps
 
-See PLAN.md.
+See PLAN.md. Now: menu input (mouse, keys), New Game, the first mission; sound; CD music from
+the .bin audio tracks; later an Indeo 5 decoder or converting the videos at setup.
