@@ -1,7 +1,7 @@
 # PLAN — Recoil
 
 The way through: recomp_kit's docs/GUIDE.md. Tick off what is done, note what was learned.
-Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
+Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes went back into recomp_kit 1dbe3cf.
 
 ## 1. Start
 
