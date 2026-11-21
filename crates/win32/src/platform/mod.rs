@@ -22,6 +22,7 @@ pub mod hd;
 pub mod kernel32;
 pub mod menupad;
 pub mod misc;
+pub mod module;
 pub mod record;
 pub mod sample;
 pub mod stats;
@@ -980,7 +981,7 @@ pub fn host_path(guest: &str) -> PathBuf {
 
 // ---- process start -------------------------------------------------------------------------------
 
-fn find_import(dll: &str, name: &str) -> Option<&'static Import> {
+pub(crate) fn find_import(dll: &str, name: &str) -> Option<&'static Import> {
     if let Some(i) = crate::game::game().import(dll, name) {
         return Some(i);
     }
@@ -999,22 +1000,65 @@ fn find_import(dll: &str, name: &str) -> Option<&'static Import> {
     tables.iter().flat_map(|t| t.iter()).find(|i| i.0 == name)
 }
 
-/// Load the EXE into a new guest address space, bind its imports, and run it on this thread
-/// (which needs a large stack: guest calls nest on it). Returns the exit code.
-pub fn run_game(img: &Image, game_dir: PathBuf) -> u32 {
-    let _ = GAME_DIR.set(game_dir);
-    reserve_memory();
+/// Copy a PE image into guest memory at its base (headers and sections); its pages go to
+/// `ranges` (what a savestate keeps).
+fn map_image(img: &Image, ranges: &mut Vec<(u32, u32)>) {
     let m = mem();
-    m.map(IMAGE_BASE, IMAGE_BASE + 0x1000);
+    m.map(img.base, img.base + 0x1000);
     let hdr = &img.data[..0x1000.min(img.data.len())];
-    m.slice(IMAGE_BASE, hdr.len()).copy_from_slice(hdr);
-    let mut ranges = vec![(IMAGE_BASE, IMAGE_BASE + 0x1000), (TIB, TIB + 0x1000), (STACK_LO, STACK_HI)];
+    m.slice(img.base, hdr.len()).copy_from_slice(hdr);
+    ranges.push((img.base, img.base + 0x1000));
     for sec in &img.sections {
         let size = sec.vsize.max(sec.rsize);
         m.map(sec.va, sec.va + size);
         ranges.push((sec.va & !0xfff, (sec.va + size + 0xfff) & !0xfff));
         let bytes = img.read(sec.va, size as usize).unwrap();
         m.slice(sec.va, bytes.len()).copy_from_slice(&bytes);
+    }
+}
+
+/// Fill an image's import slots: game DLLs' imports with their exports, the others with
+/// thunks to our functions. The ones we do not have go to `missing`.
+fn bind_imports(img: &Image, missing: &mut Vec<String>) {
+    let m = mem();
+    for i in img.imports() {
+        let full = format!("{}!{}", i.dll, i.name);
+        if i.dll.eq_ignore_ascii_case("glide2x.dll") {
+            // imported by its decorated names (_grBufferSwap@4)
+            m.wr32(i.iat, glide::proc_address(&i.name));
+            continue;
+        }
+        let a = match module::module(&i.dll) {
+            Some(dll) => match dll.export(&i.name) {
+                0 => {
+                    missing.push(full.clone());
+                    thunk_add(full, 0, None)
+                }
+                a => a,
+            },
+            None => match find_import(&i.dll, &i.name) {
+                Some(&(name, n, f)) => thunk(name, n, f),
+                None => {
+                    missing.push(full.clone());
+                    thunk_add(full, 0, None)
+                }
+            },
+        };
+        m.wr32(i.iat, a);
+    }
+}
+
+/// Load the EXE and the game's DLLs (`dlls`, as `module::load` gave them) into a new guest
+/// address space, bind their imports, run the DLLs' DllMain and then the EXE on this thread
+/// (which needs a large stack: guest calls nest on it). Returns the exit code.
+pub fn run_game(img: &Image, dlls: &[Image], game_dir: PathBuf) -> u32 {
+    let _ = GAME_DIR.set(game_dir);
+    reserve_memory();
+    let m = mem();
+    let mut ranges = vec![(TIB, TIB + 0x1000), (STACK_LO, STACK_HI)];
+    map_image(img, &mut ranges);
+    for d in dlls {
+        map_image(d, &mut ranges);
     }
     let _ = FIXED.set(ranges);
     glide::init();
@@ -1026,16 +1070,12 @@ pub fn run_game(img: &Image, game_dir: PathBuf) -> u32 {
     init_tib(TIB, STACK_LO, STACK_HI);
 
     let mut missing = Vec::new();
-    for i in img.imports() {
-        let a = match find_import(&i.dll, &i.name) {
-            Some(&(name, n, f)) => thunk(name, n, f),
-            None => {
-                missing.push(i.name.clone());
-                thunk_add(format!("{}!{}", i.dll, i.name), 0, None)
-            }
-        };
-        m.wr32(i.iat, a);
+    for d in dlls {
+        bind_imports(d, &mut missing);
     }
+    bind_imports(img, &mut missing);
+    missing.sort();
+    missing.dedup();
     if !missing.is_empty() {
         log!("{} imports not implemented yet: {}", missing.len(), missing.join(" "));
     }
@@ -1078,6 +1118,7 @@ pub fn run_game(img: &Image, game_dir: PathBuf) -> u32 {
     c.fs_base = TIB;
     c.r[ESP] = STACK_HI - 64;
     turn_take();
+    module::attach_imports(&mut c, img);
     c.r[ESP] -= 4;
     m.wr32(c.r[ESP], RET_MAGIC);
     rt::run(&mut c, img.entry);

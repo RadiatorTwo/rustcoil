@@ -8,7 +8,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
 - [x] EXE's SHA-256 in `VERSIONS`, `Identity` filled in (title, exe, folder, registry key)
 - [x] functions found (`rtools missing <exe>` runs; or a Ghidra export in data/functions.json): 5131 found
 - [ ] every instruction supported (`rtools missing` lists none; new ones go into recomp with a test)
-- [ ] imports listed (`rtools imports <exe>`); the missing ones noted at start
+- [x] imports listed (`rtools imports <exe>`); the missing ones noted at start
 
 ## 2. Window and menu
 
@@ -55,3 +55,17 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
   videos), the usual Windows and DirectX ones. Plan: load the CD's own MFC42 / MSVCRT /
   MSVCP50 as guest DLLs and recompile them with the EXE (`Image::combine`; black_white's
   `Module` / DllMain loading) instead of writing MFC in Rust.
+- Game DLLs (2026-11-21): `Game::dlls` lists MSVCRT.DLL, MSVCP50.DLL and mfc42.dll from the
+  game folder, at their own bases (`platform/module.rs`, after black_white's `Module`).
+  They are combined with the EXE (`Image::combine`) and compiled together: 24076 functions,
+  about 6 s. Imports between modules are bound to exports (by name or `#ordinal`). The
+  DllMains run before the EXE's entry, each after the DLLs it imports. GetModuleHandleA,
+  GetModuleFileNameA, LoadLibraryA and GetProcAddress know the game DLLs and system DLLs.
+  glide2x.dll is imported by decorated names (`_grBufferSwap@4`): bound through
+  `glide::proc_address`.
+- Start reaches MFC42's DllMain. MSVCRT's init is through (GetCommandLineW, time,
+  GetVersionExA, ...). It stops at USER32!GetSysColor. Next is the MFC window layer:
+  GetSysColor and GetSysColorBrush, GDI objects (brushes, pens, DCs), window classes
+  (GetClassInfoA), the CBT hook MFC sets around CreateWindowEx (`AfxHookWindowCreate`:
+  SetWindowsHookExA(WH_CBT) and subclassing by SetWindowLongA(GWL_WNDPROC)), CallWindowProcA,
+  window properties. 423 imports are missing at start; most are never called.

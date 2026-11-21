@@ -1,6 +1,6 @@
 //! KERNEL32: process and C runtime start-up, memory, files, threads and synchronisation.
 
-use super::{Import, alloc, alloc_aligned, arg, block_size, cstr, free, guest_call, host_path, log, mem, new_cstr, put_cstr, realloc, set_last_error};
+use super::{Import, alloc, module, alloc_aligned, arg, block_size, cstr, free, guest_call, host_path, log, mem, new_cstr, put_cstr, realloc, set_last_error};
 use recomp::rt::Cpu;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -123,6 +123,182 @@ fn get_command_line(_: &mut Cpu) -> u32 {
     *P.get_or_init(|| new_cstr(crate::game::id().exe))
 }
 
+fn get_command_line_w(_: &mut Cpu) -> u32 {
+    static P: OnceLock<u32> = OnceLock::new();
+    *P.get_or_init(|| new_wstr(crate::game::id().exe))
+}
+
+/// A new NUL-terminated UTF-16 guest string (from the heap, never freed).
+pub fn new_wstr(s: &str) -> u32 {
+    let w: Vec<u16> = s.encode_utf16().chain([0]).collect();
+    let p = alloc(2 * w.len() as u32);
+    for (k, &u) in w.iter().enumerate() {
+        mem().wr16(p + 2 * k as u32, u);
+    }
+    p
+}
+
+/// GetVersionExA(OSVERSIONINFOA*): Windows 98 (as GetVersion).
+fn get_version_ex(c: &mut Cpu) -> u32 {
+    let p = arg(c, 0);
+    let m = mem();
+    let size = m.rd32(p).clamp(148, 156);
+    m.slice(p + 4, size as usize - 4).fill(0);
+    m.wr32(p + 4, 4); // major
+    m.wr32(p + 8, 10); // minor
+    m.wr32(p + 12, 0x040a_07ce); // build 1998 with the version in the high word
+    m.wr32(p + 16, 1); // VER_PLATFORM_WIN32_WINDOWS
+    1
+}
+
+/// LocalAlloc(flags, size): our handles are the memory (always zeroed).
+fn local_alloc(c: &mut Cpu) -> u32 {
+    alloc(arg(c, 1))
+}
+
+fn local_free(c: &mut Cpu) -> u32 {
+    free(arg(c, 0));
+    0
+}
+
+/// 100 ns steps since 1601-01-01 (FILETIME) now, UTC.
+fn file_time_now() -> u64 {
+    let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    d.as_nanos() as u64 / 100 + 116_444_736_000_000_000
+}
+
+/// A FILETIME as SYSTEMTIME's eight fields: year, month, weekday, day, hour, minute, second,
+/// milliseconds.
+fn system_time(t: u64) -> [u16; 8] {
+    let ms_total = t / 10_000;
+    let (ms, secs) = (ms_total % 1000, ms_total / 1000);
+    let days = (secs / 86400) as i64 - 134_774; // 1601-01-01 to 1970-01-01
+    // civil from days (Howard Hinnant's algorithm)
+    let z = days + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + (month <= 2) as i64;
+    let weekday = (days + 4).rem_euclid(7);
+    let s = secs % 86400;
+    [year, month, weekday, day, (s / 3600) as i64, (s / 60 % 60) as i64, (s % 60) as i64, ms as i64].map(|v| v as u16)
+}
+
+fn put_system_time(p: u32, st: [u16; 8]) {
+    for (k, v) in st.into_iter().enumerate() {
+        mem().wr16(p + 2 * k as u32, v);
+    }
+}
+
+/// GetSystemTime and GetLocalTime: UTC (the time zone is UTC).
+fn get_local_time(c: &mut Cpu) -> u32 {
+    put_system_time(arg(c, 0), system_time(file_time_now()));
+    0
+}
+
+/// FileTimeToLocalFileTime and back: the same (UTC).
+fn file_time_to_local_file_time(c: &mut Cpu) -> u32 {
+    let m = mem();
+    let (from, to) = (arg(c, 0), arg(c, 1));
+    let (lo, hi) = (m.rd32(from), m.rd32(from + 4));
+    m.wr32(to, lo);
+    m.wr32(to + 4, hi);
+    1
+}
+
+fn file_time_to_system_time(c: &mut Cpu) -> u32 {
+    let m = mem();
+    let (ft, st) = (arg(c, 0), arg(c, 1));
+    put_system_time(st, system_time(m.rd32(ft) as u64 | (m.rd32(ft + 4) as u64) << 32));
+    1
+}
+
+/// SystemTimeToFileTime(SYSTEMTIME*, FILETIME*)
+fn system_time_to_file_time(c: &mut Cpu) -> u32 {
+    let m = mem();
+    let (st, ft) = (arg(c, 0), arg(c, 1));
+    let (y, mo, d) = (m.rd16(st) as i64, m.rd16(st + 2) as i64, m.rd16(st + 6) as i64);
+    let (h, mi, s, ms) = (m.rd16(st + 8) as i64, m.rd16(st + 10) as i64, m.rd16(st + 12) as i64, m.rd16(st + 14) as i64);
+    // days since 1970-01-01 (Howard Hinnant's algorithm), then since 1601
+    let y2 = if mo <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let doy = (153 * (if mo > 2 { mo - 3 } else { mo + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468 + 134_774;
+    let t = ((((days * 24 + h) * 60 + mi) * 60 + s) * 1000 + ms) as u64 * 10_000;
+    m.wr32(ft, t as u32);
+    m.wr32(ft + 4, (t >> 32) as u32);
+    1
+}
+
+/// GetUserDefaultLCID: English (United States).
+fn get_user_default_lcid(_: &mut Cpu) -> u32 {
+    0x0409
+}
+
+/// MulDiv(a, b, c): a * b / c rounded, -1 when c is 0.
+fn mul_div(c: &mut Cpu) -> u32 {
+    let (a, b, d) = (arg(c, 0) as i32 as i64, arg(c, 1) as i32 as i64, arg(c, 2) as i32 as i64);
+    if d == 0 {
+        return u32::MAX;
+    }
+    let p = a * b;
+    let half = d.abs() / 2;
+    let r = if (p < 0) != (d < 0) { (p - half * p.signum()) / d } else { (p + half * p.signum()) / d };
+    r as i32 as u32
+}
+
+fn lstrcat(c: &mut Cpu) -> u32 {
+    let (dst, src) = (arg(c, 0), arg(c, 1));
+    let s = cstr(src);
+    let at = dst + cstr(dst).len() as u32;
+    put_cstr(at, &s, s.len() as u32 + 1);
+    dst
+}
+
+/// lstrcmpiA: compared without case (as the C locale).
+fn lstrcmpi(c: &mut Cpu) -> u32 {
+    let (a, b) = (cstr(arg(c, 0)).to_ascii_lowercase(), cstr(arg(c, 1)).to_ascii_lowercase());
+    a.cmp(&b) as i32 as u32
+}
+
+/// GlobalMemoryStatus(MEMORYSTATUS*): 1 GB of memory, 768 MB free, 2 GB address space.
+fn global_memory_status(c: &mut Cpu) -> u32 {
+    let p = arg(c, 0);
+    let m = mem();
+    for (k, v) in [32u32, 25, 1 << 30, 768 << 20, 2 << 30, 2 << 30, 0x7ffe_0000, 0x6000_0000].into_iter().enumerate() {
+        m.wr32(p + 4 * k as u32, v);
+    }
+    0
+}
+
+fn interlocked_exchange(c: &mut Cpu) -> u32 {
+    let (p, v) = (arg(c, 0), arg(c, 1));
+    let old = mem().rd32(p);
+    mem().wr32(p, v);
+    old
+}
+
+/// GetProcessVersion: Windows 4.10 for every process.
+fn get_process_version(_: &mut Cpu) -> u32 {
+    0x0004_000a
+}
+
+fn get_current_process_id(_: &mut Cpu) -> u32 {
+    0x100
+}
+
+/// No time zone (UTC): TIME_ZONE_INFORMATION zeroed, TIME_ZONE_ID_UNKNOWN.
+fn get_time_zone_information(c: &mut Cpu) -> u32 {
+    mem().slice(arg(c, 0), 172).fill(0);
+    0
+}
+
 fn get_startup_info(c: &mut Cpu) -> u32 {
     let p = arg(c, 0);
     mem().slice(p, 68).fill(0);
@@ -130,8 +306,31 @@ fn get_startup_info(c: &mut Cpu) -> u32 {
     0
 }
 
+/// The EXE (no name), a game DLL whose DllMain has run, the EXE by its name, or a system DLL.
 fn get_module_handle(c: &mut Cpu) -> u32 {
-    if arg(c, 0) == 0 { super::IMAGE_BASE } else { 0 }
+    let name = arg(c, 0);
+    if name == 0 {
+        return super::IMAGE_BASE;
+    }
+    let name = cstr(name);
+    if let Some(m) = module::module(&name) {
+        return if module::attached(m) { m.base } else { 0 };
+    }
+    let file = name.rsplit(['\\', '/']).next().unwrap_or(&name);
+    let exe = crate::game::id().exe;
+    if file.eq_ignore_ascii_case(exe) || exe.rsplit_once('.').is_some_and(|(s, _)| file.eq_ignore_ascii_case(s)) {
+        return super::IMAGE_BASE;
+    }
+    if file.eq_ignore_ascii_case("glide2x.dll") || file.eq_ignore_ascii_case("glide2x") {
+        return super::glide::MODULE;
+    }
+    match module::system_module(&name) {
+        Some(h) => h,
+        None => {
+            set_last_error(126);
+            0
+        }
+    }
 }
 
 /// Where the EXE is, as the game sees it.
@@ -140,8 +339,12 @@ fn exe_path() -> String {
 }
 
 fn get_module_file_name(c: &mut Cpu) -> u32 {
-    let (buf, n) = (arg(c, 1), arg(c, 2));
-    put_cstr(buf, &exe_path(), n)
+    let (h, buf, n) = (arg(c, 0), arg(c, 1), arg(c, 2));
+    let path = match module::module_at(h) {
+        Some(m) => m.guest_path(),
+        None => exe_path(),
+    };
+    put_cstr(buf, &path, n)
 }
 
 fn get_environment_strings(_: &mut Cpu) -> u32 {
@@ -1048,23 +1251,68 @@ fn load_library(c: &mut Cpu) -> u32 {
     if name.eq_ignore_ascii_case("glide2x.dll") {
         return super::glide::MODULE;
     }
+    // a game DLL: its DllMain runs now if it has not yet
+    if let Some(m) = module::module(&name) {
+        module::attach(c, m);
+        return m.base;
+    }
+    if let Some(h) = module::system_module(&name) {
+        return h;
+    }
     log!("LoadLibraryA({name}): not available");
     set_last_error(126);
     0
 }
 fn get_proc_address(c: &mut Cpu) -> u32 {
-    let (module, name) = (arg(c, 0), arg(c, 1));
+    let (h, name) = (arg(c, 0), arg(c, 1));
     let name = if name > 0xffff { cstr(name) } else { format!("#{name}") };
-    if module == super::glide::MODULE {
+    if h == super::glide::MODULE {
         return super::glide::proc_address(&name);
     }
-    log!("GetProcAddress({module:#x}, {name}): not available");
-    0
+    let a = match module::module_at(h) {
+        Some(m) => m.export(&name),
+        None => module::system_proc(h, &name),
+    };
+    if a == 0 {
+        log!("GetProcAddress({h:#x}, {name}): not available");
+        set_last_error(127);
+    }
+    a
 }
 
 pub const IMPORTS: &[Import] = &[
     ("GetVersion", 0, get_version),
     ("GetCommandLineA", 0, get_command_line),
+    ("GetCommandLineW", 0, get_command_line_w),
+    ("GetTimeZoneInformation", 1, get_time_zone_information),
+    ("GetVersionExA", 1, get_version_ex),
+    ("LocalAlloc", 2, local_alloc),
+    ("LocalFree", 1, local_free),
+    ("GetSystemTime", 1, get_local_time),
+    ("GetLocalTime", 1, get_local_time),
+    ("FileTimeToLocalFileTime", 2, file_time_to_local_file_time),
+    ("LocalFileTimeToFileTime", 2, file_time_to_local_file_time),
+    ("FileTimeToSystemTime", 2, file_time_to_system_time),
+    ("SystemTimeToFileTime", 2, system_time_to_file_time),
+    ("GetUserDefaultLCID", 0, get_user_default_lcid),
+    ("GetThreadLocale", 0, get_user_default_lcid),
+    ("GetSystemDefaultLangID", 0, get_user_default_lcid),
+    ("IsValidCodePage", 1, ret1),
+    ("IsValidLocale", 2, ret1),
+    ("IsDBCSLeadByte", 1, ret0),
+    ("MulDiv", 3, mul_div),
+    ("lstrcatA", 2, lstrcat),
+    ("lstrcmpiA", 2, lstrcmpi),
+    ("GlobalMemoryStatus", 1, global_memory_status),
+    ("InterlockedExchange", 2, interlocked_exchange),
+    ("GetCurrentProcessId", 0, get_current_process_id),
+    ("GetProcessVersion", 1, get_process_version),
+    ("SetUnhandledExceptionFilter", 1, ret0),
+    ("IsBadReadPtr", 2, ret0),
+    ("IsBadWritePtr", 2, ret0),
+    ("IsBadCodePtr", 1, ret0),
+    ("TlsFree", 1, ret1),
+    ("DisableThreadLibraryCalls", 1, ret1),
     ("GetStartupInfoA", 1, get_startup_info),
     ("GetModuleHandleA", 1, get_module_handle),
     ("GetModuleFileNameA", 3, get_module_file_name),

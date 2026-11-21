@@ -756,6 +756,18 @@ fn wsprintf(c: &mut Cpu) -> u32 {
     put_cstr(buf, &s, s.len() as u32 + 1)
 }
 
+/// RegisterWindowMessageA: a number from 0xc000 up, the same for the same name (any case).
+fn register_window_message(c: &mut Cpu) -> u32 {
+    static NAMES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    let name = cstr(arg(c, 0)).to_ascii_lowercase();
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    let k = names.iter().position(|n| *n == name).unwrap_or_else(|| {
+        names.push(name);
+        names.len() - 1
+    });
+    0xc000 + k as u32
+}
+
 fn ret0(_: &mut Cpu) -> u32 {
     0
 }
@@ -814,6 +826,7 @@ fn show_cursor(c: &mut Cpu) -> u32 {
 }
 
 pub const IMPORTS: &[Import] = &[
+    ("RegisterWindowMessageA", 1, register_window_message),
     ("RegisterClassA", 1, register_class),
     ("UnregisterClassA", 2, ret1),
     ("CreateWindowExA", 12, create_window_ex),

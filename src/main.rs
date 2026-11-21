@@ -59,7 +59,14 @@ impl Game for MyGame {
         // a Ghidra export, when there is one (only function boundaries: fine to commit):
         // recomp::image::load_functions(include_str!("../data/functions.json"))
         let mut code = recomp::discover::Code::new(img);
-        recomp::discover::find_functions(&mut code, &[(img.entry, "entry".into())])
+        let mut seeds = vec![(img.entry, "entry".into())];
+        seeds.extend(win32::platform::module::seeds());
+        recomp::discover::find_functions(&mut code, &seeds)
+    }
+
+    fn dlls(&self) -> &'static [(&'static str, u32)] {
+        // the MFC and C runtime from the CD (group "Msvc DLLs"), at their own bases
+        &[("MSVCRT.DLL", 0x7800_0000), ("MSVCP50.DLL", 0x780c_0000), ("mfc42.dll", 0x5f40_0000)]
     }
 
     fn smc(&self) -> SmcSpec {
