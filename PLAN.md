@@ -92,3 +92,15 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
   (HKCU\SOFTWARE\Zipper\RECOIL\1.0, which MFC opens for its settings). The main window draws
   the bitmap GAMEBMP (648x507) with StretchBlt; GDI drawing is not shown yet. The game writes
   recoil.err and recoil.out (empty so far). Glide is not opened yet.
+- Solved: the "settings dialog" of the original is the main window itself: GAMEBMP and a menu
+  (Game: Start / Multi Player Start / Westwood Online / Exit; Options: Software - GameZ, Card 1-3,
+  320x200 .. 1024x768, DirectSound / A3D, Fullscreen, Full HUD, CD Audio, Joystick; Help). Only
+  Campaigns (position 1) is removed. Game > Start is 0x68 (0x430790 -> 0x42e4c0). The hook on
+  CRecoilApp::Run (0x442d50, `src/hooks.rs`) posts Card 1, 640 x 480 and Start: the launcher is
+  skipped. A settings screen of our own comes later (registry or menu, no environment variables).
+- After Start: MCI (CD audio, MCI_OPEN) answers "no device" for now (the music is the CD's audio
+  tracks 2-5: later, from the .bin files). Glide opens 640x480. Missing in the kit's Glide:
+  grSstOrigin, grCullMode, grDepthBufferFunction, grDepthMask, grDepthBiasLevel, grFogMode,
+  grFogColorValue, grColorMask, grRenderBuffer, grGlideGetState / SetState,
+  grDrawPolygonVertexList, grLfbLock / Unlock, grLfbReadRegion / WriteRegion (nuclear_rust_strike
+  has the region functions). The picture is black until they are there.
