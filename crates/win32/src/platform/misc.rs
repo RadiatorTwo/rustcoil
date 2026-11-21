@@ -86,7 +86,21 @@ fn aux_ret0(_: &mut Cpu) -> u32 {
     0
 }
 
+/// AVIStreamOpenFromFileA and AVIFileOpenA: no AVI videos yet (Indeo needs a decoder):
+/// AVIERR_FILEOPEN, the game goes on without the video.
+fn avi_open(c: &mut Cpu) -> u32 {
+    super::log!("AVI {}: not played (no decoder yet)", super::cstr(arg(c, 1)));
+    if arg(c, 0) != 0 {
+        mem().wr32(arg(c, 0), 0);
+    }
+    0x8004_4067
+}
+
 pub const IMPORTS: &[Import] = &[
+    ("AVIFileInit", 0, aux_ret0),
+    ("AVIFileExit", 0, aux_ret0),
+    ("AVIStreamOpenFromFileA", 6, avi_open),
+    ("AVIFileOpenA", 4, avi_open),
     ("mciSendCommandA", 4, mci_send_command),
     ("mciGetErrorStringA", 3, mci_get_error_string),
     ("auxGetNumDevs", 0, aux_ret0),

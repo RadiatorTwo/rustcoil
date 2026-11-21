@@ -27,6 +27,7 @@ pub mod module;
 pub mod record;
 pub mod sample;
 pub mod stats;
+pub mod text;
 pub mod savestate;
 pub mod setting;
 pub mod tween;

@@ -2467,6 +2467,7 @@ dependencies = [
 name = "win32"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "cpal",
  "gilrs",
  "glow",
@@ -2482,6 +2483,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "ttf-parser",
  "windows-sys 0.61.2",
  "winit",
 ]

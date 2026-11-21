@@ -104,3 +104,24 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21.
   grFogColorValue, grColorMask, grRenderBuffer, grGlideGetState / SetState,
   grDrawPolygonVertexList, grLfbLock / Unlock, grLfbReadRegion / WriteRegion (nuclear_rust_strike
   has the region functions). The picture is black until they are there.
+- Glide for a real 3D game (2026-11-21, this project's copy): perspective-correct textures
+  (sow, tow, oow interpolated linearly on the screen and divided per pixel; affine games send
+  oow 1 and look the same), a depth buffer (DEPTH32F renderbuffers beside the colour and the
+  multisampled one; `gl_FragDepth`: z-buffer ooz / 65535, w-buffer 1 / (w + 1) with the depth
+  functions turned round; bias, mask, clear values), grCullMode (Glide's signed area, on the
+  CPU), grSstOrigin (lower left: y flipped, clip windows too), fog with iterated alpha (mult2 /
+  add2), grColorMask, Get/SetState (kept by the GrState's address), grDrawPolygonVertexList (a
+  fan), the linear frame buffer (grLfbLock hands out a guest buffer at a 2048-byte stride: read
+  locks get the picture so far, write locks start as 0x0821 and the changed pixels are drawn
+  over the picture at grLfbUnlock; Read/WriteRegion).
+- GDI text (2026-11-21): the game makes its bitmap fonts with GDI (zimg_fonts.cpp: a 16-bit
+  top-down DIB section, TextOutA per character, GetTextExtentPoint32A). gdi32 now keeps DC
+  state (selected objects, text and background colour, background mode, alignment), DIB
+  sections, PatBlt, and draws text with TrueType fonts (`platform/text.rs`, ab_glyph: the game
+  folder's .ttf by family name, Eurostile here; else Windows' fonts, Arial). Smooth edges.
+- Videos are AVI with Indeo Video 5 (IV50) and sound: no decoder yet. AVIStreamOpenFromFileA
+  fails (AVIERR_FILEOPEN) and the game goes on without them (zipperlogo, intro_01). Options
+  later: an Indeo 5 decoder in Rust (FFmpeg's is LGPL C: a port would be a large job), or
+  converting the videos once at setup.
+- **The main menu shows** (Glide, 640x480): New Game, Load Game, Options, Controls, Credits,
+  Quit. Next: input in the menu, starting a mission, sound, CD music.
