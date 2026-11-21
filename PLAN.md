@@ -18,7 +18,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 
 ## 3. Playing
 
-- [ ] the first level starts and plays (it starts, textured; the player's tank is black)
+- [ ] the first level starts and plays (it starts, textured; driving and fighting not tried)
 - [ ] sound, music, videos
 - [ ] saving and loading
 - [ ] the whole game played through
@@ -149,5 +149,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   everything to a texel or two. (5) Repeated textures (ground) read outside the texture in the
   layer with mipmaps on: wrapped inside the texture in the shader. A scripted run
   (`RUSTCOIL_INPUT`) no longer catches the user's mouse.
-  Open: the player's tank is black; the HUD's radar is empty; grTexCombine alpha ZERO is taken
-  as LOCAL.
+  Black vehicles (2026-11-22): the shader read the texture layer from 8 bits (`layer << 8`, the
+  replacement's layer above it): with more than 256 layers the late textures (the vehicles) read
+  a wrong layer. 12 bits now (up to MAX_LAYERS). Clamped texture rectangles stop at the
+  texture's edge (Glide's clamp). A scripted run ignores the user's mouse and keys over the
+  window (the cursor followed the real pointer and the clicks missed).
+  Seen while testing: with `RUSTCOIL_SHOT` and the present thread, pictures sometimes stop
+  (the game goes on): use `RUSTCOIL_PRESENT=0` for screenshot runs until that is found.
+  Open: the HUD's radar looks empty (not checked); grTexCombine alpha ZERO is taken as LOCAL.
