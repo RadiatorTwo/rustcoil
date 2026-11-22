@@ -165,8 +165,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   `Identity` did not list: the CD image and all of Recoil's files but the EXE, maps and zbd.
   The cleanup is gone (setup removes nothing now); DeleteFileA only deletes inside the game
   folder, and nothing is written outside it. Restored from the CD image (rtools iso / iscab, the
-  groups as above). ShowOwnedPopups and WinHelpA (closing) added. Open: closing the window in the
-  menu does not end the game.
+  groups as above). ShowOwnedPopups and WinHelpA (closing) added. Closing the window ended
+  nothing: DestroyWindow sent WM_DESTROY but not WM_NCDESTROY, where MFC posts WM_QUIT for its
+  main window. It sends both now; the game ends with ExitProcess(0).
 - Real mouse in the menus (2026-11-22): the game hides the system cursor and draws its own, and
   the kit caught a hidden cursor; winit then keeps it in the window's centre on Windows, so
   only raw motion arrived and the menu cursor stood at (320, 240). The hook on mouse_move says
