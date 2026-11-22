@@ -156,7 +156,10 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   window (the cursor followed the real pointer and the clicks missed).
   Seen while testing: with `RUSTCOIL_SHOT` and the present thread, pictures sometimes stop
   (the game goes on): use `RUSTCOIL_PRESENT=0` for screenshot runs until that is found.
-  Open: the HUD's radar looks empty (not checked); grTexCombine alpha ZERO is taken as LOCAL.
+  Tested by hand (2026-11-22): the mission looks and plays right; the picture at the lower left
+  is a target zoom (not a radar), the mission screen shows its pictures. grTexCombine: Recoil sets
+  rgb LOCAL, alpha ZERO for every texture; the texture's alpha now reads 0 (it warned on every
+  call before).
 - Lost game files (2026-11-22): a start without the EXE's path runs the kit's setup, and its
   cleanup ("what the game does not need") put everything in game_files into the recycle bin that
   `Identity` did not list: the CD image and all of Recoil's files but the EXE, maps and zbd.
