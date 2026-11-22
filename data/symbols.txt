@@ -2,6 +2,16 @@
 # description; "?" marks a guess. Only addresses, names and descriptions: nothing of the EXE.
 # 0x401000 entry_example  the program's entry
 0x42f2c0 mission_frame  thiscall: one frame of a mission (clock, input, logic, drawing, buffer swap)
+0x44eab0 mission_logic  the mission's logic for one time step (moves the objects)
+0x44f670 world_draw  draws every view in node list 8 (the camera) with 0x44d3f0 / 0x44d650
+0x44ed90 node_list  fastcall(type): the head of the node list of a type, [0x4e1ef8 + 4 * type]
+0x471e60 input_poll  fastcall: mouse 0x470430, joystick 0x472340, keyboard 0x46f710
+0x46fa00 key_slot_state  fastcall(slot): the state at [0x565b94 + 8 * slot], moved on (1 to 2, 4 to 0)
+0x46fa90 key_read  the next key pressed (keyboard buffered data)
+0x4a6810 frame_begin?  clears the buffer (grBufferClear, grClipWindow, grRenderBuffer)
+0x4a6820 lfb_begin?  locks the frame buffer for the HUD
+0x4a6880 lfb_end?  unlocks the frame buffer
+0x4a69b0 frame_end?  grBufferSwap
 0x4a5750 game_clock  now = GetTickCount * 0.001 into [0x4e6fb4], last [0x4e6fb0]; step (times scale [0x4e6fb8], set back to 1; at most [0x4e6fa8] while [0x4e6fac]) into [0x56f2e4], added to [0x56f2e8]; unscaled step [0x56f2ec], total [0x56f2f0]
 0x4a56f0 game_clock_reset  steps and totals to 0, last = now
 0x462fb0 sequence_run?  runs a sequence (0x463140 until it returns 0)

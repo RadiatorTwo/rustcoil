@@ -69,7 +69,9 @@ impl LogicClock {
     /// frame and was drawn at the newest frame's places instead (Nuclear Strike at 120 Hz:
     /// steps of 0.69 and 0.31 frame alternating, a double image). Such a swap gets the new
     /// frame instead: the logic runs at once, up to a period before it is due (its clock does
-    /// not change).
+    /// not change). A swap shown before the frame is due still gets a picture: given the new
+    /// frame, it showed the game earlier than `alpha` can (cut to 0), and the steps were uneven
+    /// (Recoil at 120 Hz: 1.80 and 1.54 degrees a picture alternating, 1.67 now).
     pub fn frame(
         &self,
         mut picture: impl FnMut(),
@@ -89,7 +91,7 @@ impl LogicClock {
         };
         let period = if period.is_zero() { frame / 4 } else { period };
         for _ in 0..16 {
-            if pacer.next_shown() + period >= due {
+            if pacer.next_shown() >= due {
                 break;
             }
             picture();

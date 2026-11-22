@@ -8,6 +8,7 @@
 
 mod frames;
 mod hooks;
+mod pictures;
 
 use recomp::smc::SmcSpec;
 use recomp::ver::Version;

@@ -896,6 +896,38 @@ pub fn display_modes() -> ((u32, u32), Vec<(u32, u32)>) {
     })
 }
 
+/// The refresh rate of the display the window is on (Hz), looked up again every 2 s (it
+/// changes when the window moves to another display). None when unknown, or when not yet
+/// looked up on the window's thread (other threads get the last value).
+pub fn refresh_hz() -> Option<f64> {
+    static LAST: Mutex<Option<(std::time::Instant, Option<f64>)>> = Mutex::new(None);
+    let mut last = LAST.lock().unwrap();
+    if let Some((at, hz)) = *last {
+        if at.elapsed() < Duration::from_secs(2) || !on_main() {
+            return hz;
+        }
+    } else if !on_main() {
+        return None;
+    }
+    let hz = with_host(|h| {
+        h.app
+            .window
+            .as_ref()
+            .and_then(|w| w.current_monitor())
+            .and_then(|m| m.refresh_rate_millihertz())
+    })
+    .filter(|&mhz| mhz >= 20_000)
+    .map(|mhz| mhz as f64 / 1000.0);
+    if last.is_none_or(|(_, old)| old != hz) {
+        log!(
+            "display: refresh rate {}",
+            hz.map_or("unknown".into(), |hz| format!("{hz:.3} Hz"))
+        );
+    }
+    *last = Some((std::time::Instant::now(), hz));
+    hz
+}
+
 /// Is the window fullscreen?
 pub fn is_fullscreen() -> bool {
     on_main()

@@ -6,22 +6,26 @@
 //! second (~197 degrees a second), faster at 240 (250) and 500 (333): below a step of about
 //! 1/120 s some of the logic no longer scales. In a mission the clock now goes on by exactly
 //! one logic frame (`LOGIC_FPS`) each pass of the loop, and the loop waits for that frame's
-//! time. Outside a mission (menus, briefings) it reads the real time. Pictures above the
-//! logic's rate come later: between logic frames, interpolated (GUIDE.md 8b).
+//! time. Outside a mission (menus, briefings) it reads the real time.
+//!
+//! Pictures come at the display's refresh rate: while the next logic frame is not yet due, the
+//! mission's frame runs again as a picture (`picture`: no clock, input or logic), and every
+//! picture shows what moved between the last two logic frames (`crate::pictures`).
 
-use recomp::rt::{Cpu, ESP, call_original};
+use recomp::rt::{Cpu, EAX, ECX, ESP, Hook, call_original};
 use recomp::ver::Us;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use win32::GlideExt;
 use win32::platform::tween::{LogicClock, Pacer};
-use win32::platform::{mem, without_turn};
+use win32::platform::{guest_call, hold_turn, mem, without_turn};
 
 /// The rate of the game's logic in a mission.
 pub const LOGIC_FPS: u32 = 60;
 
-/// The most pictures a second.
-const MAX_FPS: u32 = 60;
+/// Pictures a second when the display's refresh rate is unknown.
+const DEFAULT_FPS: f64 = 60.0;
 
 /// The game's clock: real time since the last call into `NOW`/`LAST`, the time step (times
 /// `SCALE`, which it sets back to 1, at most `MAX_STEP` while `CLAMP`) into `STEP` and
@@ -35,16 +39,114 @@ const SCALE: Us = Us(0x4e6fb8);
 const CLAMP: Us = Us(0x4e6fac);
 const MAX_STEP: Us = Us(0x4e6fa8);
 
-/// Where the mission's frame (0x42f2c0) calls the clock: its return address.
+/// Where the mission's frame calls the clock: its return address.
 const MISSION_CALL: Us = Us(0x42f2cd);
+
+/// One frame of a mission (thiscall, one argument): clock, input (`INPUT`, `KEY_READ`,
+/// `KEY_STATE`), logic (`LOGIC`: the only call that moves the tank), drawing (the world at
+/// 0x44f670, the HUD into the locked frame buffer), buffer swap.
+const MISSION_FRAME: Us = Us(0x42f2c0);
+const LOGIC: Us = Us(0x44eab0);
+/// Draws the world (`pictures`: what moved is put between logic frames meanwhile).
+const RENDER: Us = Us(0x44f670);
+/// Polls mouse, joystick and keyboard (DirectInput) into the game's tables.
+const INPUT: Us = Us(0x471e60);
+/// The next key pressed, from the keyboard's buffered data.
+const KEY_READ: Us = Us(0x46fa90);
+/// fastcall(slot): a key slot's state ([0x565b94 + 8 * slot]), moved on (pressed to held).
+const KEY_STATE: Us = Us(0x46fa00);
+const KEY_SLOTS: Us = Us(0x565b94);
+
+/// The hooks of this module.
+pub fn hooks() -> Vec<(u32, Hook)> {
+    let table: &[(Us, Hook)] = &[
+        (GAME_CLOCK, game_clock),
+        (LOGIC, logic),
+        (INPUT, input),
+        (KEY_READ, key_read),
+        (KEY_STATE, key_state),
+        (RENDER, render),
+    ];
+    table.iter().map(|&(a, h)| (a.at(), h)).collect()
+}
+
+/// A picture between logic frames is being drawn: the mission's frame runs without its clock,
+/// input and logic.
+static PICTURE: AtomicBool = AtomicBool::new(false);
+
+fn picture_now() -> bool {
+    PICTURE.load(Ordering::Relaxed)
+}
+
+/// Return from a hooked function without running it.
+fn skip(c: &mut Cpu, eax: u32) {
+    c.r[ESP] += 4;
+    c.r[EAX] = eax;
+}
+
+fn logic(c: &mut Cpu) {
+    if picture_now() {
+        return skip(c, 0);
+    }
+    call_original(c, LOGIC.at());
+    crate::pictures::noted(*LAST.lock().unwrap());
+}
+
+/// Every picture (the logic frame's own too) shows the game a frame late, where it is when the
+/// picture is shown.
+fn render(c: &mut Cpu) {
+    let alpha = CLOCK.alpha(PACER.next_shown());
+    crate::pictures::draw(alpha, || call_original(c, RENDER.at()));
+}
+
+fn input(c: &mut Cpu) {
+    if picture_now() {
+        return skip(c, 0);
+    }
+    call_original(c, INPUT.at());
+}
+
+fn key_read(c: &mut Cpu) {
+    if picture_now() {
+        return skip(c, 0);
+    }
+    call_original(c, KEY_READ.at());
+}
+
+/// In a picture: the state as it is, not moved on.
+fn key_state(c: &mut Cpu) {
+    if picture_now() {
+        let state = mem().rd32(KEY_SLOTS.at() + 8 * c.r[ECX]);
+        return skip(c, state);
+    }
+    call_original(c, KEY_STATE.at());
+}
+
+/// A picture: the mission's frame again, with the time step 0 (the HUD's animations go on
+/// with the logic).
+fn picture(c: &mut Cpu, this: u32, arg: u32) {
+    let saved = win32::platform::tween::save(c);
+    let step = mem().rd32(STEP.at());
+    mem().wr32(STEP.at(), 0);
+    PICTURE.store(true, Ordering::Relaxed);
+    hold_turn(true);
+    c.r[ECX] = this;
+    guest_call(c, MISSION_FRAME.at(), &[arg]);
+    hold_turn(false);
+    PICTURE.store(false, Ordering::Relaxed);
+    mem().wr32(STEP.at(), step);
+    win32::platform::tween::restore(c, &saved);
+}
 
 static CLOCK: LogicClock = LogicClock::new(LOGIC_FPS);
 static PACER: Pacer = Pacer::new();
 /// The number of the last logic frame.
 static LAST: Mutex<u64> = Mutex::new(0);
 
+/// A picture each refresh of the display the window is on.
 fn period() -> Duration {
-    Duration::from_nanos(1_000_000_000 / MAX_FPS as u64)
+    let hz = win32::platform::window::refresh_hz().unwrap_or(DEFAULT_FPS);
+    Duration::from_secs_f64(1.0 / hz)
 }
 
 fn rdf(a: Us) -> f32 {
@@ -58,13 +160,20 @@ fn wrf(a: Us, v: f32) {
 /// The game's clock: in a mission, the step is a whole number of logic frames.
 pub fn game_clock(c: &mut Cpu) {
     let ret = mem().rd32(c.r[ESP]);
+    if picture_now() {
+        return skip(c, c.r[EAX]);
+    }
     if ret != MISSION_CALL.at() {
         CLOCK.reset();
+        crate::pictures::forget();
         call_original(c, GAME_CLOCK.at());
         return;
     }
     let (scale, total, game_time) = (rdf(SCALE), rdf(TOTAL), rdf(GAME_TIME));
-    let (n, _) = CLOCK.frame(|| {}, &PACER, period());
+    // the mission frame's own `this` and argument (above its 0x18 bytes of locals and saved
+    // registers and its return address)
+    let (this, arg) = (c.r[ECX], mem().rd32(c.r[ESP] + 0x20));
+    let (n, _) = CLOCK.frame(|| picture(c, this, arg), &PACER, period());
     let frames = std::mem::replace(&mut *LAST.lock().unwrap(), n);
     call_original(c, GAME_CLOCK.at());
     if n == 0 {
@@ -82,7 +191,7 @@ pub fn game_clock(c: &mut Cpu) {
     wrf(GAME_TIME, game_time + step);
 }
 
-/// Glide's buffer swap: the pictures at most `MAX_FPS` a second.
+/// Glide's buffer swap: a picture each refresh of the display.
 pub struct Frames;
 
 pub static FRAMES: Frames = Frames;

@@ -26,8 +26,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 ## 4. Port
 
 - [ ] setup from the CD or a CD image (`required`, `video_marker`)
-- [ ] high frame rate (GUIDE 8b): logic fixed at 60 a second (done); pictures between logic
-  frames, interpolated (open)
+- [x] high frame rate (GUIDE 8b): logic fixed at 60 a second, pictures at the display's
+  refresh rate between logic frames, interpolated (objects and camera)
 - [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
 - [ ] high resolution, widescreen, settings
 - [ ] gamepad
@@ -227,3 +227,17 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   x, y, z) was at 0x111bd70 in that replay (heap: found by comparing memory snapshots).
   Next: pictures between logic frames (GUIDE 8b steps 2-6); the mission frame mixes logic
   and drawing.
+- Pictures between logic frames (2026-11-22): the mission frame 0x42f2c0 is clock, input
+  (0x471e60, 0x46fa90, 0x46fa00), logic (0x44eab0: the only call that moves the tank), drawing
+  (0x44f670 the world; the HUD into the locked frame buffer 0x4a6820..0x4a6880), swap
+  (0x4a69b0). A picture runs the mission frame again without clock, input and logic, the time
+  step 0. The engine is Zipper's (as MechWarrior 3): nodes of 0xc4 bytes in lists by type at
+  [0x4e1ef8 + 4k] (6: all, 8: the camera); node type at +0x34, data at +0x38. The drawing works
+  from an object's (type 5) Euler angles (data+0x18), matrix (+0x30) and place (+0x54), and
+  from the camera's (type 1) place and angles (data+0x14/+0x20, again at +0x2c/+0x38): moved
+  only while drawing, they are drawn there (`pictures.rs`). The tank turns evenly per picture
+  at 120, 144 and 240 Hz (steps within 2%). The kit's LogicClock gave the logic frame's own
+  swap when it came less than a period before the frame was due: alpha was cut to 0, steps
+  alternated 1.80/1.54 degrees; now pictures go on until one is shown at the due time. At 480
+  Hz the game reaches ~400 pictures a second (the logic frame's picture misses a refresh now
+  and then): performance work later.

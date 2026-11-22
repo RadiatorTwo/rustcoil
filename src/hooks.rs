@@ -17,9 +17,10 @@ pub fn all() -> Vec<(u32, Hook)> {
         (APP_RUN, app_run),
         (ANIM_ADVANCE, anim_advance),
         (MOUSE_MOVE, mouse_move),
-        (crate::frames::GAME_CLOCK, crate::frames::game_clock),
     ];
-    table.iter().map(|&(a, h)| (a.at(), h)).collect()
+    let mut v: Vec<(u32, Hook)> = table.iter().map(|&(a, h)| (a.at(), h)).collect();
+    v.extend(crate::frames::hooks());
+    v
 }
 
 /// CRecoilApp::Run: the main loop (PeekMessage, else a frame). Until the menu command
