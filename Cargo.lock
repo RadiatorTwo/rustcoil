@@ -2481,6 +2481,7 @@ dependencies = [
  "glutin",
  "glutin-winit",
  "iced-x86",
+ "indeo",
  "libc",
  "md-5",
  "miniz_oxide 0.8.9",

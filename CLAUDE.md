@@ -53,7 +53,9 @@ Details and the history: PLAN.md, section "Learned".
 - Launcher: the main window (GAMEBMP + menu) is skipped. The hook on CRecoilApp::Run (0x442d50,
   `src/hooks.rs`) posts WM_COMMAND Card 1 (0x9c72), 640x480 (0x209), Start (0x68).
 - Fonts: built by the game with GDI text into a DIB (`platform/text.rs`, Eurostile .ttf).
-- Videos: AVI Indeo 5, not played yet (AVI open fails, the game goes on). CD music: MCI
+- Videos: AVI through the game's own Video for Windows calls (`platform/avi.rs`): Cinepak
+  (`platform/cinepak.rs`: logo, menu pumps) and Indeo 5 (`crates/indeo`, an FFmpeg port under
+  LGPL-2.1-or-later: keep it a crate of its own). CD music: MCI
   cdaudio reads the audio tracks straight from the .cue/.bin in game_files (`platform/cdaudio.rs`).
 - The game writes `recoil.err` / `recoil.out` in its folder.
 - Test run: `target\release\rustcoil.exe game_files\Recoil\recoil3dfx.exe` with
@@ -61,5 +63,5 @@ Details and the history: PLAN.md, section "Learned".
 
 ## Next steps
 
-See PLAN.md. Now: playing further missions, saving and loading; later an Indeo 5 decoder or
-converting the videos at setup.
+See PLAN.md. Now: playing further missions, saving and loading; high resolution, widescreen,
+gamepad, release.

@@ -20,5 +20,6 @@ cargo build --release
 
 ## License
 
-MIT (the code here). The game and its files belong to their owners and are not part of this
+MIT (the code here), except `crates/indeo` (the Indeo 5 video decoder, a port of FFmpeg's):
+LGPL-2.1-or-later, see `crates/indeo/COPYING`. The game and its files belong to their owners and are not part of this
 project.

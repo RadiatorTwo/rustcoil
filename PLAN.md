@@ -19,7 +19,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 ## 3. Playing
 
 - [ ] the first level starts and plays (it starts, textured; driving and fighting not tried)
-- [ ] sound, music, videos (sound effects and CD music work; videos not)
+- [x] sound, music, videos
 - [ ] saving and loading
 - [ ] the whole game played through
 
@@ -190,3 +190,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   it when the track has ended (`cdaudio::poll`); a new play or a stop sends superseded /
   aborted. Menu: track 2; missions: track 2 + n mod 3 (0x42f239). Tracks 3 and 4 begin with
   35-45 s of very quiet music. Checked: track 2 starts again after 213 s (its length).
+- Videos (2026-11-22): Recoil plays its AVIs itself through Video for Windows (0x463f70):
+  AVIStreamOpenFromFileA / InfoA / ReadFormat / Read for the video and PCM sound streams,
+  ICLocate + ICDecompress (cdecl) to its 16-bit BI_BITFIELDS or 24-bit format, frame by frame;
+  the sound is read in one piece and played through DirectSound. `platform/avi.rs` reads the
+  RIFF file and answers these; codecs: Cinepak (`platform/cinepak.rs`, written here: zipperlogo,
+  pumpa, pumpb) and Indeo 5 (`crates/indeo`: FFmpeg's indeo5/ivi ported to Rust, LGPL; equal to
+  FFmpeg on all 9077 pictures of the 8 IV50 videos, which are all key frames: motion
+  compensation is ported but not exercised). The intro's stripes are in the video itself.
