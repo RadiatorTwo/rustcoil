@@ -19,7 +19,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 ## 3. Playing
 
 - [ ] the first level starts and plays (it starts, textured; driving and fighting not tried)
-- [ ] sound, music, videos
+- [ ] sound, music, videos (sound effects and CD music work; videos not)
 - [ ] saving and loading
 - [ ] the whole game played through
 
@@ -173,3 +173,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   only raw motion arrived and the menu cursor stood at (320, 240). The hook on mouse_move says
   whether the game draws its cursor at the mouse (`window::cursor_drawn`, menus): then the
   cursor is hidden but not caught. In missions it is caught as before.
+- CD music (2026-11-22): `platform/cdaudio.rs` (from Hogs of War's port) answers MCI cdaudio
+  from the CD image: the .cue in the game folder or the one above it, its .bin tracks read when
+  played (2352-byte sectors, 16-bit stereo 44.1 kHz) and mixed by dsound.rs. Nothing extracted.
+  Recoil opens the device, plays track 2 in the menu and sets the volume with aux*
+  (auxGetNumDevs, auxGetDevCapsA, auxGetVolume, auxSetVolume: one CD device).
