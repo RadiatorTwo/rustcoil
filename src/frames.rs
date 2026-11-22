@@ -205,7 +205,7 @@ pub struct Frames;
 pub static FRAMES: Frames = Frames;
 
 impl GlideExt for Frames {
-    fn frame_shown(&self) {
+    fn before_shown(&self) {
         without_turn(|| PACER.pace(period()));
     }
 }
