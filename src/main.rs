@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod draw;
 mod frames;
 mod hooks;
 mod pictures;
@@ -63,6 +64,7 @@ impl Game for MyGame {
         let mut code = recomp::discover::Code::new(img);
         let mut seeds = vec![(img.entry, "entry".into())];
         seeds.extend(win32::platform::module::seeds());
+        seeds.extend(draw::seeds());
         recomp::discover::find_functions(&mut code, &seeds)
     }
 

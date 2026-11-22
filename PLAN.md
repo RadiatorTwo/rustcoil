@@ -28,9 +28,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [ ] setup from the CD or a CD image (`required`, `video_marker`)
 - [x] high frame rate (GUIDE 8b): logic fixed at 60 a second, pictures at the display's
   refresh rate between logic frames, interpolated (objects and camera)
-- [ ] speed (GUIDE 8a): ~400 to ~650 pictures a second unpaced in the first mission
-  (2026-11-22); next: the game's hot drawing functions (0x477bb0, 0x487f90, 0x4b0370,
-  0x4b13b0, 0x47f050: ~35 %)
+- [ ] speed (GUIDE 8a): ~400 to ~850 pictures a second unpaced in the first mission
+  (2026-11-22); next: 0x487f90, 0x477bb0, 0x4b0370, 0x47f050 (~35 %, spread thin)
 - [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
 - [ ] high resolution, widescreen, settings
 - [ ] gamepad
@@ -276,3 +275,21 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   objects in a hash map (~1.1 ms a logic frame, as long as the game's logic): now a list in
   the node list's order (~0.65 ms, the rest is reading the objects). A logic frame's picture
   takes ~3 ms (logic ~1.1, noted, drawing ~1.4), so `MAX_FPS` stays 240 on a 480 Hz display.
+- Speed, part 2 (2026-11-22): the five hot functions' profile was flat (no instruction over
+  ~1 %), so first a profile by guest instruction: the lifter notes each instruction's
+  address on its Cranelift code (`SourceLoc`, kept in the JIT cache, `jit::guest_at`),
+  `RUSTCOIL_SAMPLE=insn` logs the hottest instructions, `RUSTCOIL_DUMP=<hex>` marks them in
+  the machine code (`RUSTCOIL_DUMP_CLIF=1` the IR too). Found: (1) 0x4b13b0 sorts the
+  see-through polygons by depth with a bubble sort: `src/draw.rs` sorts them (stable, the
+  same order; `RUSTCOIL_CHECK_SORT=1` compares with the bubble sort) and goes on in the
+  game's code at 0x4b1457 (a function entry of its own, `draw::seeds`, with the frame the
+  game's code has there). (2) The x87 arithmetic under the usual control word (Recoil:
+  0x37f) branched on it in every operation; the vertex loop at 0x4b0525 (~40 instructions)
+  became ~7700 machine instructions with its hot path spread through them. Straight runs of
+  x87 code now get a version for the usual control words (`usual87`, ~410 instructions):
+  ~743 to ~826 by A/B (`RUSTCOIL_NO_USUAL87=1` turns it off). (3) Flags only where read
+  (`flag_liveness`, test `flags_live.rs`; `RUSTCOIL_FLAGS_ALL=1` off): flags were computed
+  after every instruction and kept as loop block parameters; leaving dead ones undefined
+  made it 10 % slower (old values lived on), defining them 0 is even. Loop heads no longer
+  store the registers for `rt_yield`. Unpaced measuring allows 64 pictures a logic frame
+  (16 capped it at 960).
