@@ -79,7 +79,9 @@ const MOUSE_REL_Y: Us = Us(0x565b4c);
 fn mouse_move(c: &mut Cpu) {
     call_original(c, MOUSE_MOVE.at());
     let m = mem();
-    if m.rd32(MOUSE_FREE.at()) != 0 {
+    let menu = m.rd32(MOUSE_FREE.at()) == 0;
+    win32::platform::window::cursor_drawn(menu);
+    if !menu {
         return;
     }
     let (x, y) = user32::mouse_pos();
