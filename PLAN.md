@@ -28,6 +28,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [ ] setup from the CD or a CD image (`required`, `video_marker`)
 - [x] high frame rate (GUIDE 8b): logic fixed at 60 a second, pictures at the display's
   refresh rate between logic frames, interpolated (objects and camera)
+- [ ] speed (GUIDE 8a): ~400 to ~650 pictures a second unpaced in the first mission
+  (2026-11-22); next: the game's hot drawing functions (0x477bb0, 0x487f90, 0x4b0370,
+  0x4b13b0, 0x47f050: ~35 %)
 - [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
 - [ ] high resolution, widescreen, settings
 - [ ] gamepad
@@ -261,3 +264,15 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   camera space (change of speed per picture ~0.00005, was ~0.0015). On the way: pictures are
   paced before they are shown (`GlideExt::before_shown`), kept halfway between the display's
   refreshes (`Pacer::pace_on`, `window::vblank`), at most 240 a second.
+- Speed (2026-11-22, GUIDE 8a): measured with `RUSTCOIL_UNPACED=1` (pictures as fast as the
+  game draws them, vsync off, at most 16 a logic frame) and `RUSTCOIL_SAMPLE=1` (it now logs
+  the last second's frames a second too) over the replay `game_files/turn.txt`; our own code
+  resolved by a link map (`cargo rustc --release --bin rustcoil -- -C link-arg=/MAP:<file>`,
+  own target directory). From ~400 to ~650 in the mission (runs differ by ~10 %):
+  grLfbUnlock converted and uploaded the whole 640x480 locked buffer every picture for a
+  HUD of ~5000 pixels (~0.6 ms): now only bands of rows the game wrote, scanned four pixels
+  at a time; GetTextExtentPoint32A (~1 a picture) looked for the font file each time (a
+  file opened by `Path::exists`): the pick is kept per font; `pictures::noted` kept ~8200
+  objects in a hash map (~1.1 ms a logic frame, as long as the game's logic): now a list in
+  the node list's order (~0.65 ms, the rest is reading the objects). A logic frame's picture
+  takes ~3 ms (logic ~1.1, noted, drawing ~1.4), so `MAX_FPS` stays 240 on a 480 Hz display.

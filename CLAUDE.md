@@ -37,7 +37,8 @@ boundaries (`data/functions.json`) and our notes by address (`data/symbols.txt`)
 - Switches (prefix `RUSTCOIL_`): `TRACE_API=1` every import call, `TRACE_MSG=1` window
   messages, `WATCH=1` where the game is every 2 s, `SHOT=file.png` screenshots,
   `INPUT="5000:click@320,240 8000:Enter"` scripted input, `RECORD=file.txt` records input,
-  `NO_VIDEO=1`, `WINDOW=1280x960`, `COUNT=file` calls per function.
+  `NO_VIDEO=1`, `WINDOW=1280x960`, `COUNT=file` calls per function, `SAMPLE=1` profile and
+  frames a second every 2 s, `PROF=1` time in imports, `UNPACED=1` pictures unbraked (to measure).
 
 ## Known facts about the game
 

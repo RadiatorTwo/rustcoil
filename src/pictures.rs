@@ -78,8 +78,7 @@ struct Camera {
     v: [[f32; 3]; 4],
 }
 
-/// Hashes a data address (a u32) by one multiplication: SipHash over ~8000 objects a logic
-/// frame took ~1.6 ms with the rest of `noted`, the logic frame's picture came late.
+/// Hashes a data address (a u32) by one multiplication.
 #[derive(Default)]
 struct AddrHash(u64);
 
@@ -97,11 +96,15 @@ impl std::hash::Hasher for AddrHash {
     }
 }
 
-type Objects = HashMap<u32, Hist<Object>, std::hash::BuildHasherDefault<AddrHash>>;
+type ByAddr<T> = HashMap<u32, T, std::hash::BuildHasherDefault<AddrHash>>;
 
 struct Noted {
-    /// every object's values at the last two logic frames, by data address
-    objects: Objects,
+    /// every object's values at the last logic frame (`last_frame`), by data address, in the
+    /// order of the node list: the next frame finds an object at the same place there but for
+    /// the few made or gone in between (looked up by address then, `index`). A hash map of
+    /// ~8000 objects took ~1.1 ms a logic frame, as long as the game's logic.
+    objects: Vec<(u32, Object)>,
+    last_frame: Option<u64>,
     /// the objects that moved in the newest logic frame: (node, data, root, before, now)
     moving: Vec<(u32, u32, bool, Object, Object)>,
     /// children whose world values are made from their parent's, below what moved: (data,
@@ -109,7 +112,7 @@ struct Noted {
     derived: Vec<(u32, u32)>,
     /// the children below what moved, and their world values right before the logic frame
     watched: Vec<u32>,
-    before_logic: HashMap<u32, [f32; 12], std::hash::BuildHasherDefault<AddrHash>>,
+    before_logic: ByAddr<[f32; 12]>,
     camera: Option<(u32, Hist<Camera>)>,
 }
 
@@ -206,7 +209,8 @@ pub fn noted(frame: u64) {
     let m = mem();
     let mut g = NOTED.lock().unwrap();
     let n = g.get_or_insert_with(|| Noted {
-        objects: Objects::default(),
+        objects: Vec::new(),
+        last_frame: None,
         moving: Vec::new(),
         derived: Vec::new(),
         watched: Vec::new(),
@@ -214,6 +218,15 @@ pub fn noted(frame: u64) {
         camera: None,
     });
     n.moving.clear();
+    let last = std::mem::take(&mut n.objects);
+    // the last frame's values count only right before this one
+    let last = match n.last_frame.replace(frame) {
+        Some(f) if f + 1 == frame => last,
+        _ => Vec::new(),
+    };
+    let mut objects = Vec::with_capacity(last.len());
+    let mut index: Option<ByAddr<usize>> = None;
+    let mut at = 0;
     for node in nodes(ALL_NODES) {
         if m.rd32(node + 0x34) != OBJECT {
             continue;
@@ -223,13 +236,24 @@ pub fn noted(frame: u64) {
             continue;
         }
         let now = Object::read(d);
-        let h = n.objects.entry(d).or_insert(Hist {
-            frame,
-            cur: now,
-            prev: None,
-        });
-        *h = Hist::note(Some(&*h), frame, now);
-        if let Some(before) = h.prev.filter(|p| *p != now && !far(&p.place, &now.place)) {
+        objects.push((d, now));
+        let k = match last.get(at) {
+            Some(&(a, _)) if a == d => Some(at),
+            _ => index
+                .get_or_insert_with(|| {
+                    let mut ix = ByAddr::default();
+                    for (k, &(a, _)) in last.iter().enumerate() {
+                        ix.entry(a).or_insert(k);
+                    }
+                    ix
+                })
+                .get(&d)
+                .copied(),
+        };
+        let Some(k) = k else { continue };
+        at = k + 1;
+        let before = last[k].1;
+        if before != now && !far(&before.place, &now.place) {
             n.moving.push((
                 node,
                 d,
@@ -239,8 +263,7 @@ pub fn noted(frame: u64) {
             ));
         }
     }
-    // objects gone (their data may be another's now)
-    n.objects.retain(|_, h| h.frame == frame);
+    n.objects = objects;
     let mut derived: Vec<(u32, u32, u32)> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let before = std::mem::take(&mut n.before_logic);
@@ -378,7 +401,7 @@ fn rule(pw: &[f32; 12], cm: &[f32; 9], cp: &[f32; 3]) -> [f32; 12] {
 fn derive_below(
     node: u32,
     depth: u32,
-    before: &HashMap<u32, [f32; 12], std::hash::BuildHasherDefault<AddrHash>>,
+    before: &ByAddr<[f32; 12]>,
     out: &mut Vec<(u32, u32, u32)>,
     seen: &mut std::collections::HashSet<u32>,
 ) {

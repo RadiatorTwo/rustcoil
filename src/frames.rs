@@ -164,7 +164,19 @@ struct Pace {
     refresh: Option<(std::time::Instant, Duration)>,
 }
 
+/// `RUSTCOIL_UNPACED=1` (to measure): pictures as fast as the game draws them, vsync off.
+fn unpaced() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| recomp::config::env_on("UNPACED"))
+}
+
 fn pace() -> Pace {
+    if unpaced() {
+        return Pace {
+            period: Duration::ZERO,
+            refresh: None,
+        };
+    }
     let refresh = win32::platform::window::vblank();
     let hz = match refresh {
         Some((_, p)) => Some(1.0 / p.as_secs_f64()),
@@ -231,7 +243,7 @@ pub static FRAMES: Frames = Frames;
 impl GlideExt for Frames {
     fn before_shown(&self) {
         let p = pace();
-        win32::platform::gl::set_vsync(true);
+        win32::platform::gl::set_vsync(!unpaced());
         without_turn(|| PACER.pace_on(p.period, p.refresh));
     }
 }
