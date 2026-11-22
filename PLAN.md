@@ -178,3 +178,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   played (2352-byte sectors, 16-bit stereo 44.1 kHz) and mixed by dsound.rs. Nothing extracted.
   Recoil opens the device, plays track 2 in the menu and sets the volume with aux*
   (auxGetNumDevs, auxGetDevCapsA, auxGetVolume, auxSetVolume: one CD device).
+- Saving crashed (2026-11-22): "call to unknown address 0x41f6f0", a callback registered with
+  `mov edx, 0x41f6f0` (0x41f609). Discovery had a word of data (0x41f886) pointing at the last
+  byte of a jne in that function: it decodes as `call far [edi+5Eh]`, was taken as a function,
+  and the real one no longer fit. Far calls and jumps through memory now count as "not compiled
+  code" (`plausible`, test `far_call_is_no_function`); the only change in the list: 0x41f886 out,
+  0x41f6f0 in.
