@@ -44,8 +44,32 @@ struct Camera {
     v: [[f32; 3]; 4],
 }
 
+/// Hashes a data address (a u32) by one multiplication: SipHash over ~8000 objects a logic
+/// frame took ~1.6 ms with the rest of `noted`, the logic frame's picture came late.
+#[derive(Default)]
+struct AddrHash(u64);
+
+impl std::hash::Hasher for AddrHash {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0 ^ b as u64).wrapping_mul(0x100_0000_01b3);
+        }
+    }
+    fn write_u32(&mut self, v: u32) {
+        self.0 = (v as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+type Objects = HashMap<u32, Hist<Object>, std::hash::BuildHasherDefault<AddrHash>>;
+
 struct Noted {
-    objects: HashMap<u32, Hist<Object>>,
+    /// every object's values at the last two logic frames, by data address
+    objects: Objects,
+    /// the objects that moved in the newest logic frame: (data, before, now)
+    moving: Vec<(u32, Object, Object)>,
     camera: Option<(u32, Hist<Camera>)>,
 }
 
@@ -120,10 +144,12 @@ impl Camera {
 pub fn noted(frame: u64) {
     let m = mem();
     let mut g = NOTED.lock().unwrap();
-    let old = g.take();
-    let (mut old_objects, old_camera) =
-        old.map_or((HashMap::new(), None), |n| (n.objects, n.camera));
-    let mut objects = HashMap::with_capacity(old_objects.len());
+    let n = g.get_or_insert_with(|| Noted {
+        objects: Objects::default(),
+        moving: Vec::new(),
+        camera: None,
+    });
+    n.moving.clear();
     for node in nodes(ALL_NODES) {
         if m.rd32(node + 0x34) != OBJECT {
             continue;
@@ -132,19 +158,27 @@ pub fn noted(frame: u64) {
         if d == 0 {
             continue;
         }
-        objects.insert(
-            d,
-            Hist::note(old_objects.remove(&d).as_ref(), frame, Object::read(d)),
-        );
+        let now = Object::read(d);
+        let h = n.objects.entry(d).or_insert(Hist {
+            frame,
+            cur: now,
+            prev: None,
+        });
+        *h = Hist::note(Some(&*h), frame, now);
+        if let Some(before) = h.prev.filter(|p| *p != now && !far(&p.place, &now.place)) {
+            n.moving.push((d, before, now));
+        }
     }
-    let camera = nodes(CAMERAS)
-        .find(|&n| m.rd32(n + 0x34) == CAMERA && m.rd32(n + 0x38) != 0)
-        .map(|n| {
-            let d = m.rd32(n + 0x38);
+    // objects gone (their data may be another's now)
+    n.objects.retain(|_, h| h.frame == frame);
+    let old_camera = n.camera.take();
+    n.camera = nodes(CAMERAS)
+        .find(|&c| m.rd32(c + 0x34) == CAMERA && m.rd32(c + 0x38) != 0)
+        .map(|c| {
+            let d = m.rd32(c + 0x38);
             let h = old_camera.filter(|&(od, _)| od == d).map(|(_, h)| h);
             (d, Hist::note(h.as_ref(), frame, Camera::read(d)))
         });
-    *g = Some(Noted { objects, camera });
 }
 
 /// Out of a mission: nothing noted.
@@ -199,27 +233,20 @@ pub fn draw(alpha: Option<u32>, f: impl FnOnce()) {
         return f();
     };
     let t = alpha as f32 / 256.0;
-    let newest = n.objects.values().map(|h| h.frame).max().unwrap_or(0);
-    let mut put_back = Vec::new();
-    for (&d, h) in &n.objects {
-        let Some(prev) = h
-            .prev
-            .filter(|p| h.frame == newest && *p != h.cur && !far(&p.place, &h.cur.place))
-        else {
-            continue;
-        };
+    let mut put_back = Vec::with_capacity(n.moving.len());
+    for &(d, before, now) in &n.moving {
         Object {
-            euler: mix_angles(&prev.euler, &h.cur.euler, t),
-            matrix: mix_matrix(&prev.matrix, &h.cur.matrix, t),
-            place: mix3(&prev.place, &h.cur.place, t),
+            euler: mix_angles(&before.euler, &now.euler, t),
+            matrix: mix_matrix(&before.matrix, &now.matrix, t),
+            place: mix3(&before.place, &now.place, t),
         }
         .write(d);
-        put_back.push((d, h.cur));
+        put_back.push((d, now));
     }
     let camera = n.camera.and_then(|(d, h)| {
         let prev = h
             .prev
-            .filter(|p| h.frame == newest && *p != h.cur && !far(&p.v[0], &h.cur.v[0]))?;
+            .filter(|p| *p != h.cur && !far(&p.v[0], &h.cur.v[0]))?;
         Camera {
             v: [
                 mix3(&prev.v[0], &h.cur.v[0], t),

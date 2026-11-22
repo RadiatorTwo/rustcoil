@@ -29,8 +29,7 @@ const DEFAULT_FPS: f64 = 60.0;
 
 /// The most pictures a second: what the game reaches with room to spare (~400 at most in a
 /// mission on a fast computer, 2026). A faster display gets a picture every second (third...)
-/// refresh: missing refreshes now and then (400 pictures on 480 Hz) the tank flickered and
-/// blurred as it moved.
+/// refresh.
 const MAX_FPS: f64 = 240.0;
 
 /// The game's clock: real time since the last call into `NOW`/`LAST`, the time step (times
@@ -149,12 +148,36 @@ static PACER: Pacer = Pacer::new();
 /// The number of the last logic frame.
 static LAST: Mutex<u64> = Mutex::new(0);
 
-/// A picture each refresh of the display the window is on, or each second (third...) refresh
-/// above `MAX_FPS`. With vsync (`main.rs`) every picture is then shown equally long.
-fn period() -> Duration {
-    let hz = win32::platform::window::refresh_hz().unwrap_or(DEFAULT_FPS);
-    let every = (hz / MAX_FPS).ceil().max(1.0);
-    Duration::from_secs_f64(every / hz)
+/// The pictures' pace: a picture each refresh of the display (each second, third... above
+/// `MAX_FPS`), kept to the display's refreshes (`refresh`, `Pacer::pace_on`), else
+/// `DEFAULT_FPS`. Vsync on (no tearing in fullscreen).
+///
+/// Not by the swap alone: in a window it returns at once (no wait for the refresh). Not by our
+/// own clock alone: 240 pictures a second on 480 Hz, meant for two refreshes each, landed a
+/// refresh early or late now and then (the clocks differ a little): the moving tank lagged
+/// behind and jumped ahead; ~400 unpaced ones flickered. Screenshots never showed it.
+struct Pace {
+    /// the time between pictures
+    period: Duration,
+    /// the display's last refresh and the time between two
+    refresh: Option<(std::time::Instant, Duration)>,
+}
+
+fn pace() -> Pace {
+    let refresh = win32::platform::window::vblank();
+    let hz = match refresh {
+        Some((_, p)) => Some(1.0 / p.as_secs_f64()),
+        None => win32::platform::window::refresh_hz(),
+    };
+    let period = match hz {
+        // (480.001 Hz is two refreshes a picture at 240, not three)
+        Some(hz) => (hz / MAX_FPS - 0.01).ceil().max(1.0) / hz,
+        None => 1.0 / DEFAULT_FPS,
+    };
+    Pace {
+        period: Duration::from_secs_f64(period),
+        refresh,
+    }
 }
 
 fn rdf(a: Us) -> f32 {
@@ -181,7 +204,7 @@ pub fn game_clock(c: &mut Cpu) {
     // the mission frame's own `this` and argument (above its 0x18 bytes of locals and saved
     // registers and its return address)
     let (this, arg) = (c.r[ECX], mem().rd32(c.r[ESP] + 0x20));
-    let (n, _) = CLOCK.frame(|| picture(c, this, arg), &PACER, period());
+    let (n, _) = CLOCK.frame(|| picture(c, this, arg), &PACER, pace().period);
     let frames = std::mem::replace(&mut *LAST.lock().unwrap(), n);
     call_original(c, GAME_CLOCK.at());
     if n == 0 {
@@ -199,13 +222,15 @@ pub fn game_clock(c: &mut Cpu) {
     wrf(GAME_TIME, game_time + step);
 }
 
-/// Glide's buffer swap: the pictures' pace (`period`).
+/// Glide's buffer swap: the pictures' pace (`pace`).
 pub struct Frames;
 
 pub static FRAMES: Frames = Frames;
 
 impl GlideExt for Frames {
     fn before_shown(&self) {
-        without_turn(|| PACER.pace(period()));
+        let p = pace();
+        win32::platform::gl::set_vsync(true);
+        without_turn(|| PACER.pace_on(p.period, p.refresh));
     }
 }

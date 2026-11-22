@@ -92,8 +92,6 @@ impl Game for MyGame {
 
     fn on_start(&self) {
         recomp::image::set_symbols(include_str!("../data/symbols.txt"));
-        // pictures only at the display's refresh: no tearing, each shown equally long
-        win32::platform::gl::set_vsync(true);
     }
 }
 

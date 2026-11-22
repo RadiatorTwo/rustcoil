@@ -896,6 +896,48 @@ pub fn display_modes() -> ((u32, u32), Vec<(u32, u32)>) {
     })
 }
 
+/// The display's refreshes as the desktop's compositor keeps them: when one is (the last or
+/// the next) and the time between two (None when unknown: not Windows, no compositor). Pictures paced by a
+/// clock of their own drift against the display's; this lets a pace keep to its refreshes
+/// (`tween::Pacer::pace_on`).
+#[cfg(windows)]
+pub fn vblank() -> Option<(std::time::Instant, Duration)> {
+    use windows_sys::Win32::Graphics::Dwm::{DWM_TIMING_INFO, DwmGetCompositionTimingInfo};
+    use windows_sys::Win32::System::Performance::{
+        QueryPerformanceCounter, QueryPerformanceFrequency,
+    };
+    let mut info: DWM_TIMING_INFO = unsafe { std::mem::zeroed() };
+    info.cbSize = std::mem::size_of::<DWM_TIMING_INFO>() as u32;
+    let (mut now, mut freq) = (0i64, 0i64);
+    let at = std::time::Instant::now();
+    unsafe {
+        if DwmGetCompositionTimingInfo(std::ptr::null_mut(), &mut info) != 0
+            || QueryPerformanceCounter(&mut now) == 0
+            || QueryPerformanceFrequency(&mut freq) == 0
+        {
+            return None;
+        }
+    }
+    if freq <= 0 || info.qpcRefreshPeriod == 0 || info.qpcVBlank == 0 {
+        return None;
+    }
+    let secs = |ticks: u64| Duration::from_secs_f64(ticks as f64 / freq as f64);
+    let period = secs(info.qpcRefreshPeriod);
+    // a refresh: the compositor gives the last or the next one
+    let (now, vb) = (now as u64, info.qpcVBlank);
+    let refresh = if vb <= now {
+        at.checked_sub(secs(now - vb))?
+    } else {
+        at + secs(vb - now)
+    };
+    Some((refresh, period))
+}
+
+#[cfg(not(windows))]
+pub fn vblank() -> Option<(std::time::Instant, Duration)> {
+    None
+}
+
 /// The refresh rate of the display the window is on (Hz), looked up again every 2 s (it
 /// changes when the window moves to another display). None when unknown, or when not yet
 /// looked up on the window's thread (other threads get the last value).

@@ -150,6 +150,43 @@ impl Pacer {
         *self.next.lock().unwrap() = Some(at.unwrap_or(now) + period);
     }
 
+    /// As `pace`, each turn moved to the refreshes of the display (`refresh`: one of them and
+    /// the time between two, `window::vblank`): halfway between two, so a picture a little
+    /// early or late still makes the same refresh. A pace by its own clock alone drifts
+    /// against the display's: a picture near a refresh went either way, a refresh early or
+    /// late (Recoil's moving tank, 240 pictures on 480 Hz, lagged behind and jumped ahead).
+    pub fn pace_on(&self, period: Duration, refresh: Option<(Instant, Duration)>) {
+        let Some((vblank, every)) = refresh.filter(|r| !r.1.is_zero() && !period.is_zero()) else {
+            return self.pace(period);
+        };
+        let now = Instant::now();
+        let want = self
+            .next
+            .lock()
+            .unwrap()
+            .filter(|&t| t > now)
+            .unwrap_or(now);
+        // the grid: refreshes less half a refresh; the nearest point to the turn wanted, not
+        // before now
+        let half = every / 2;
+        let grid = |t: Instant| -> Instant {
+            let base = vblank + half;
+            let k = if t >= base {
+                ((t - base).as_secs_f64() / every.as_secs_f64()).round()
+            } else {
+                -((base - t).as_secs_f64() / every.as_secs_f64()).round()
+            };
+            let off = every.mul_f64(k.abs());
+            if k >= 0.0 { base + off } else { base - off }
+        };
+        let mut at = grid(want);
+        while at < now {
+            at += every;
+        }
+        sleep_until(at);
+        *self.next.lock().unwrap() = Some(at + period);
+    }
+
     /// When a picture drawn now will be shown: at the next swap's turn, or now.
     pub fn next_shown(&self) -> Instant {
         let now = Instant::now();
