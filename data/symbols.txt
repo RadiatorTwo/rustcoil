@@ -1,6 +1,11 @@
 # What is known about the game, by address of the reference version (hex): name and a short
 # description; "?" marks a guess. Only addresses, names and descriptions: nothing of the EXE.
 # 0x401000 entry_example  the program's entry
+0x42f2c0 mission_frame  thiscall: one frame of a mission (clock, input, logic, drawing, buffer swap)
+0x4a5750 game_clock  now = GetTickCount * 0.001 into [0x4e6fb4], last [0x4e6fb0]; step (times scale [0x4e6fb8], set back to 1; at most [0x4e6fa8] while [0x4e6fac]) into [0x56f2e4], added to [0x56f2e8]; unscaled step [0x56f2ec], total [0x56f2f0]
+0x4a56f0 game_clock_reset  steps and totals to 0, last = now
+0x462fb0 sequence_run?  runs a sequence (0x463140 until it returns 0)
+0x463140 sequence_tick?  thiscall: timeGetTime * k minus start [this+8], to the current item's vtable+4 ([this+0x1c])
 0x4c35b0 object_advance_time  thiscall(float seconds): picks the video texture's frame ([this+0x34], frame count [tex+0x4c], rate [tex+0xec]), adds the time to [this+0x38]
 0x464420 video_texture_set_frame?  thiscall(int frame)
 0x470440 mouse_read  DirectInput mouse GetDeviceState (DIMOUSESTATE at 0x565b18), then mouse_move

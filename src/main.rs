@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod frames;
 mod hooks;
 
 use recomp::smc::SmcSpec;
@@ -85,7 +86,7 @@ impl Game for MyGame {
     }
 
     fn glide(&self) -> Option<&'static dyn GlideExt> {
-        Some(&FRAMES)
+        Some(&frames::FRAMES)
     }
 
     fn on_start(&self) {
@@ -94,31 +95,6 @@ impl Game for MyGame {
 }
 
 static GAME: MyGame = MyGame;
-
-/// Recoil's logic is not made for hundreds of frames a second: unbraked it ran ~550 in a
-/// mission and the tank turned far too fast (at 30 fps it turns evenly). Pictures are paced to
-/// at most `MAX_FPS`.
-struct Frames;
-
-static FRAMES: Frames = Frames;
-
-const MAX_FPS: f64 = 60.0;
-
-impl GlideExt for Frames {
-    fn frame_shown(&self) {
-        use std::time::{Duration, Instant};
-        static NEXT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
-        let step = Duration::from_secs_f64(1.0 / MAX_FPS);
-        let mut next = NEXT.lock().unwrap_or_else(|e| e.into_inner());
-        let now = Instant::now();
-        // the slot after the last; a frame late by more than one slot starts the schedule anew
-        let due = next.unwrap_or(now).max(now - step);
-        if due > now {
-            std::thread::sleep(due - now);
-        }
-        *next = Some(due + step);
-    }
-}
 
 fn main() {
     win32::run(&GAME)

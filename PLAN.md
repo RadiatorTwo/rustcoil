@@ -26,6 +26,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 ## 4. Port
 
 - [ ] setup from the CD or a CD image (`required`, `video_marker`)
+- [ ] high frame rate (GUIDE 8b): logic fixed at 60 a second (done); pictures between logic
+  frames, interpolated (open)
 - [ ] high resolution, widescreen, settings
 - [ ] gamepad
 - [ ] release (tag `v*`)
@@ -213,3 +215,13 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   inside does not scale). Replayed at 30 fps the tank turns evenly over ~2.5 s. Pictures are
   now paced to at most 60 a second (`Frames` in main.rs, Glide's `frame_shown`). Open: whether
   60 turns as the original did (the user checks; 30 is the fallback).
+- Logic at a fixed rate (2026-11-22): the mission's clock is 0x4a5750 (GetTickCount, not
+  timeGetTime: 0x463140 is a sequence player's clock), called from the mission frame
+  0x42f2c0; it keeps the step in [0x56f2e4]. With an exact fixed step (`frames.rs`) the
+  tank turns alike at 30, 60 and 120 logic frames a second (~197 degrees a second, the
+  user's recording), faster at 240 (250) and 500 (333): below a step of ~1/120 s some logic no
+  longer scales (a least step a frame?). The logic now runs at exactly 60 frames a second in
+  a mission; menus and briefings keep the real clock. The tank's matrix (3x3 floats, then
+  x, y, z) was at 0x111bd70 in that replay (heap: found by comparing memory snapshots).
+  Next: pictures between logic frames (GUIDE 8b steps 2-6); the mission frame mixes logic
+  and drawing.

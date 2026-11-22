@@ -13,7 +13,12 @@ use win32::platform::{mem, user32};
 
 /// Every hook: (address in the version that runs, function).
 pub fn all() -> Vec<(u32, Hook)> {
-    let table: &[(Us, Hook)] = &[(APP_RUN, app_run), (ANIM_ADVANCE, anim_advance), (MOUSE_MOVE, mouse_move)];
+    let table: &[(Us, Hook)] = &[
+        (APP_RUN, app_run),
+        (ANIM_ADVANCE, anim_advance),
+        (MOUSE_MOVE, mouse_move),
+        (crate::frames::GAME_CLOCK, crate::frames::game_clock),
+    ];
     table.iter().map(|&(a, h)| (a.at(), h)).collect()
 }
 
