@@ -198,3 +198,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   pumpa, pumpb) and Indeo 5 (`crates/indeo`: FFmpeg's indeo5/ivi ported to Rust, LGPL; equal to
   FFmpeg on all 9077 pictures of the 8 IV50 videos, which are all key frames: motion
   compensation is ported but not exercised). The intro's stripes are in the video itself.
+- Skipping videos (2026-11-22): Space skipped only now and then. Recoil reads the keyboard
+  device's buffered data in two places in turn: 0x46fa90 (returns a pressed key: the video
+  skips) and 0x46f710 (the game's key table, up to 128 events). Our DirectInput reads fetched
+  the window's input themselves, so a new key event went to whichever read came first (about
+  half the time the wrong one). The input is now fetched by the message loop (PeekMessage comes
+  right before 0x46fa90) and by a DirectInput read only when the loop has not run for 20 ms
+  (the briefing waits without messages). Each device object also has its own event buffer now
+  (Acquire cleared the shared one). Checked: Space at 7 different times skips every time
+  (before: 2 of 7).
