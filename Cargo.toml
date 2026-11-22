@@ -12,7 +12,7 @@ win32 = { path = "crates/win32" }
 
 [workspace]
 resolver = "3"
-members = [".", "crates/recomp", "crates/win32", "crates/tools"]
+members = [".", "crates/recomp", "crates/win32", "crates/tools", "crates/indeo"]
 
 [workspace.package]
 version = "0.1.0"
