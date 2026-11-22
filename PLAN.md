@@ -221,7 +221,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   0x42f2c0; it keeps the step in [0x56f2e4]. With an exact fixed step (`frames.rs`) the
   tank turns alike at 30, 60 and 120 logic frames a second (~197 degrees a second, the
   user's recording), faster at 240 (250) and 500 (333): below a step of ~1/120 s some logic no
-  longer scales (a least step a frame?). The logic now runs at exactly 60 frames a second in
+  longer scales (a least step a frame?). PCGamingWiki agrees: the original Glide renderer was
+  capped at 63 fps, and at 120+ fps the game runs very fast. The logic now runs at exactly 60 frames a second in
   a mission; menus and briefings keep the real clock. The tank's matrix (3x3 floats, then
   x, y, z) was at 0x111bd70 in that replay (heap: found by comparing memory snapshots).
   Next: pictures between logic frames (GUIDE 8b steps 2-6); the mission frame mixes logic
