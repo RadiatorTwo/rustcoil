@@ -243,14 +243,21 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   and then): performance work later.
 - Objects lagged and jumped between logic frames (2026-11-22, the user: only the tank and
   other vehicles, never the surroundings; not on screenshots): an object's data holds its own
-  matrix and place (+0x30, +0x54) and the same in the world (+0x60, +0x84); the drawing draws
-  from the world's, made again from the own ones only while the node is marked changed
-  (node+0x2c bit 4: set by the logic, cleared by the drawing). Only the own values
-  interpolated, the tank moved in each logic frame's picture and stood still in between.
-  Interpolating the world values as noted after the logic failed badly (positions and
-  pictures apart): a child's world values are made only while drawing, noted a frame old and
-  put back they fell further behind. Now a picture between logic frames marks what moved and
-  its children (node+0x5c count, +0x60 array) changed itself, and puts world values, sphere
-  (node+0x64) and mark back as they were right before it. On the way: pictures
-  are paced before they are shown (`GlideExt::before_shown`), kept halfway between the
-  display's refreshes (`Pacer::pace_on`, `window::vblank`), at most 240 a second.
+  matrix and place (+0x30, +0x54) and the same in the world (+0x60, +0x84), from which the
+  drawing draws. A root object's world values (parent: the world) the logic writes; a
+  child's the drawing makes from its parent's (world matrix = own matrix x parent's world
+  matrix, world place = own place x parent's world matrix + parent's world place, row
+  vectors) only for nodes the logic marked changed (node+0x2c bit 4), so in a logic frame's
+  picture alone. Measured from what the drawing used (camera matrix +0x44/+0x68): the tank
+  stood still in the pictures between and was a frame ahead in each logic frame's. Now every
+  picture interpolates a root's world values too (only where they equal its own: exhaust
+  trails, roots whose world values the logic sets apart, were stretched across the picture)
+  and makes the children's by the rule (`derived`: children that fit the rule and whose world
+  values the logic left, or set exactly by the rule; effects the logic moves are left);
+  after the picture the newest values are put back and the children's made from them. Wrong
+  turns: putting back children's world values noted at the logic frame (a frame old: objects
+  and pictures drifted apart); marking nodes changed in a picture (the drawing then made only
+  their bounding spheres again, not the world values). Tank and turret now move evenly in
+  camera space (change of speed per picture ~0.00005, was ~0.0015). On the way: pictures are
+  paced before they are shown (`GlideExt::before_shown`), kept halfway between the display's
+  refreshes (`Pacer::pace_on`, `window::vblank`), at most 240 a second.

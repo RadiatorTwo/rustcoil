@@ -93,6 +93,7 @@ fn logic(c: &mut Cpu) {
     if picture_now() {
         return skip(c, 0);
     }
+    crate::pictures::before_logic();
     call_original(c, LOGIC.at());
     crate::pictures::noted(*LAST.lock().unwrap());
 }
@@ -101,7 +102,7 @@ fn logic(c: &mut Cpu) {
 /// picture is shown.
 fn render(c: &mut Cpu) {
     let alpha = CLOCK.alpha(PACER.next_shown());
-    crate::pictures::draw(alpha, picture_now(), || call_original(c, RENDER.at()));
+    crate::pictures::draw(alpha, || call_original(c, RENDER.at()));
 }
 
 fn input(c: &mut Cpu) {

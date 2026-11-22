@@ -6,15 +6,23 @@
 //! +0x34, its data at +0x38. The drawing (0x44f670) works from the nodes' own values each time:
 //!
 //! - an object (type 5): Euler angles at data+0x18, a 3x3 matrix at +0x30, its place at +0x54,
-//!   and the same in the world (its parents applied) at +0x60 and +0x84. The drawing draws
-//!   from the world's values and makes them again from the others only for a node marked
-//!   changed (node+0x2c bit 4: set by the logic, cleared by the drawing; the node's bounding
-//!   sphere at +0x64 made again too). A logic frame's picture makes them again; a picture
-//!   between logic frames marks what moved (and its children, `CHILDREN`) itself and puts
-//!   world values, sphere and mark back after. Without, the tank moved only in each logic
-//!   frame's picture: it lagged behind and jumped ahead, the surroundings did not. Noting the
-//!   world values at the logic frame instead failed: a child's are made only while drawing,
-//!   noted they were a frame old, and put back they fell further behind each frame;
+//!   and the same in the world at +0x60 and +0x84, from which the drawing draws. A root
+//!   object's (its parent the world: the tank, other vehicles) the logic writes. A child's
+//!   (the tank's parts) the drawing makes from its parent's, only while the logic marked the
+//!   node changed (node+0x2c bit 4), so in a logic frame's picture alone: world matrix = own
+//!   matrix x parent's world matrix, world place = own place x parent's world matrix +
+//!   parent's world place (row vectors; exactly the drawing's). Some children's world values
+//!   the logic sets itself (effects: exhaust puffs); they do not fit that rule and are left.
+//!
+//!   A picture puts the own values of what moved between the logic frames, a root's world
+//!   values too, and makes the children's world values from them itself (`derived`); after,
+//!   it puts back the newest values and makes the children's from those (what the logic
+//!   frame's own drawing would have made). Interpolating only the own values, the tank stood
+//!   still in the pictures between and was a frame ahead in each logic frame's: it lagged
+//!   behind and jumped ahead, the surroundings did not. Marking nodes changed in a picture did
+//!   not make the drawing make children again (only their bounding spheres), and putting back
+//!   world values noted at the logic frame put back a child's from the frame before: objects
+//!   and pictures drifted apart;
 //! - the camera (type 1): place at data+0x14, Euler angles at +0x20, the same again at +0x2c and
 //!   +0x38 (its matrices at +0x44 and +0x188 are made from them while drawing).
 //!
@@ -35,14 +43,21 @@ const CAMERAS: u32 = 8;
 const OBJECT: u32 = 5;
 const CAMERA: u32 = 1;
 
-/// A node's mark of change (bit `CHANGED`), its bounding sphere (centre, radius), its children
-/// (count, array of node pointers).
-const FLAGS: u32 = 0x2c;
-const CHANGED: u32 = 4;
-const SPHERE: u32 = 0x64;
+/// A node's children and parents: count, array of node pointers.
 const CHILDREN: u32 = 0x5c;
-/// An object's world matrix and place, 12 floats.
+const PARENTS: u32 = 0x54;
+/// An object's world matrix (9 floats) and place (at +0x84).
 const WORLD: u32 = 0x60;
+/// A child's world values made by the rule differ from the drawing's last ones at most by a
+/// logic frame's move. Not enough to tell an effect's (set by the logic each frame) apart:
+/// with that test alone the exhaust trails were stretched across the picture. A child whose
+/// world values the logic left as they were is the drawing's (`watched`); one the logic set
+/// exactly by the rule follows its parent too.
+const DERIVED_MATRIX: f32 = 0.25;
+const DERIVED_PLACE: f32 = 3.0;
+/// A child whose world values the logic makes by the rule itself (rounding apart).
+const EXACT_MATRIX: f32 = 0.001;
+const EXACT_PLACE: f32 = 0.01;
 
 /// A move larger than this in one logic frame (1/60 s) is a jump.
 const JUMP: f32 = 200.0;
@@ -53,6 +68,8 @@ struct Object {
     euler: [f32; 3],
     matrix: [f32; 9],
     place: [f32; 3],
+    /// the world's matrix and place (`WORLD`): the logic's for a root object
+    world: [f32; 12],
 }
 
 /// The camera's values: place and Euler angles, twice.
@@ -85,8 +102,14 @@ type Objects = HashMap<u32, Hist<Object>, std::hash::BuildHasherDefault<AddrHash
 struct Noted {
     /// every object's values at the last two logic frames, by data address
     objects: Objects,
-    /// the objects that moved in the newest logic frame: (node, data, before, now)
-    moving: Vec<(u32, u32, Object, Object)>,
+    /// the objects that moved in the newest logic frame: (node, data, root, before, now)
+    moving: Vec<(u32, u32, bool, Object, Object)>,
+    /// children whose world values are made from their parent's, below what moved: (data,
+    /// parent's data), parents before children
+    derived: Vec<(u32, u32)>,
+    /// the children below what moved, and their world values right before the logic frame
+    watched: Vec<u32>,
+    before_logic: HashMap<u32, [f32; 12], std::hash::BuildHasherDefault<AddrHash>>,
     camera: Option<(u32, Hist<Camera>)>,
 }
 
@@ -133,13 +156,34 @@ impl Object {
             euler: vec(d + 0x18),
             matrix: vec(d + 0x30),
             place: vec(d + 0x54),
+            world: vec(d + WORLD),
         }
     }
 
+    /// The object's own values (the world's: `write_world`).
     fn write(&self, d: u32) {
         put(d + 0x18, &self.euler);
         put(d + 0x30, &self.matrix);
         put(d + 0x54, &self.place);
+    }
+
+    fn write_world(&self, d: u32) {
+        put(d + WORLD, &self.world);
+    }
+
+    fn mix(&self, b: &Object, t: f32) -> Object {
+        let (wa, wb) = (&self.world, &b.world);
+        let m = mix_matrix(wa[..9].try_into().unwrap(), wb[..9].try_into().unwrap(), t);
+        let p = mix3(wa[9..].try_into().unwrap(), wb[9..].try_into().unwrap(), t);
+        let mut world = [0.0; 12];
+        world[..9].copy_from_slice(&m);
+        world[9..].copy_from_slice(&p);
+        Object {
+            euler: mix_angles(&self.euler, &b.euler, t),
+            matrix: mix_matrix(&self.matrix, &b.matrix, t),
+            place: mix3(&self.place, &b.place, t),
+            world,
+        }
     }
 }
 
@@ -164,6 +208,9 @@ pub fn noted(frame: u64) {
     let n = g.get_or_insert_with(|| Noted {
         objects: Objects::default(),
         moving: Vec::new(),
+        derived: Vec::new(),
+        watched: Vec::new(),
+        before_logic: HashMap::default(),
         camera: None,
     });
     n.moving.clear();
@@ -183,11 +230,26 @@ pub fn noted(frame: u64) {
         });
         *h = Hist::note(Some(&*h), frame, now);
         if let Some(before) = h.prev.filter(|p| *p != now && !far(&p.place, &now.place)) {
-            n.moving.push((node, d, before, now));
+            n.moving.push((
+                node,
+                d,
+                is_root(node) && own_world(&before) && own_world(&now),
+                before,
+                now,
+            ));
         }
     }
     // objects gone (their data may be another's now)
     n.objects.retain(|_, h| h.frame == frame);
+    let mut derived: Vec<(u32, u32, u32)> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let before = std::mem::take(&mut n.before_logic);
+    for &(node, ..) in &n.moving {
+        derive_below(node, depth(node), &before, &mut derived, &mut seen);
+    }
+    derived.sort_by_key(|x| x.2);
+    n.derived = derived.into_iter().map(|(d, p, _)| (d, p)).collect();
+    n.watched = seen.into_iter().collect();
     let old_camera = n.camera.take();
     n.camera = nodes(CAMERAS)
         .find(|&c| m.rd32(c + 0x34) == CAMERA && m.rd32(c + 0x38) != 0)
@@ -196,6 +258,19 @@ pub fn noted(frame: u64) {
             let h = old_camera.filter(|&(od, _)| od == d).map(|(_, h)| h);
             (d, Hist::note(h.as_ref(), frame, Camera::read(d)))
         });
+}
+
+/// Right before a logic frame: the watched children's world values (`DERIVED_MATRIX`).
+pub fn before_logic() {
+    let mut g = NOTED.lock().unwrap();
+    if let Some(n) = g.as_mut() {
+        let watched = std::mem::take(&mut n.watched);
+        n.before_logic.clear();
+        for &d in &watched {
+            n.before_logic.insert(d, vec(d + WORLD));
+        }
+        n.watched = watched;
+    }
 }
 
 /// Out of a mission: nothing noted.
@@ -241,37 +316,107 @@ fn mix_matrix(a: &[f32; 9], b: &[f32; 9], t: f32) -> [f32; 9] {
     from_quat(q.map(|v| v / n)).map(|v| v as f32)
 }
 
-/// What a node's marking changes: (node, flags, sphere, world values of an object).
-type Marked = (u32, u32, [f32; 4], Option<[f32; 12]>);
-
-/// Mark `node` and its children changed (`depth` deep so far), noting what the drawing will
-/// make again.
-fn mark(node: u32, marked: &mut Vec<Marked>, depth: u32) {
+/// Whether an object's world values are the logic's: its parent is no object (the world). A
+/// child's the drawing makes from its parent's.
+fn is_root(node: u32) -> bool {
     let m = mem();
-    if depth > 16 || marked.iter().any(|x| x.0 == node) {
-        return;
+    let (count, parents) = (m.rd32(node + PARENTS), m.rd32(node + PARENTS + 4));
+    count == 0 || parents == 0 || {
+        let parent = m.rd32(parents);
+        parent == 0 || m.rd32(parent + 0x34) != OBJECT
     }
-    let flags = m.rd32(node + FLAGS);
-    let world = (m.rd32(node + 0x34) == OBJECT && m.rd32(node + 0x38) != 0)
-        .then(|| vec::<12>(m.rd32(node + 0x38) + WORLD));
-    marked.push((node, flags, vec::<4>(node + SPHERE), world));
-    m.wr32(node + FLAGS, flags | CHANGED);
+}
+
+/// Whether a root object's world values are its own (the tank's): an effect's (exhaust trails)
+/// the logic sets apart from them, and interpolated they were stretched across the picture.
+fn own_world(o: &Object) -> bool {
+    (0..9).all(|i| (o.world[i] - o.matrix[i]).abs() < EXACT_MATRIX)
+        && (0..3).all(|i| (o.world[9 + i] - o.place[i]).abs() < EXACT_PLACE)
+}
+
+/// How many object parents a node has above it.
+fn depth(mut node: u32) -> u32 {
+    let m = mem();
+    for k in 0..16 {
+        let (count, parents) = (m.rd32(node + PARENTS), m.rd32(node + PARENTS + 4));
+        let parent = if count == 0 || parents == 0 {
+            0
+        } else {
+            m.rd32(parents)
+        };
+        if parent == 0 || m.rd32(parent + 0x34) != OBJECT {
+            return k;
+        }
+        node = parent;
+    }
+    16
+}
+
+/// A child's world values by the drawing's rule from its parent's (data addresses).
+fn world_of(d: u32, parent: u32) -> [f32; 12] {
+    rule(&vec(parent + WORLD), &vec(d + 0x30), &vec(d + 0x54))
+}
+
+/// The drawing's rule: a child's world values from its parent's (`pw`) and its own matrix and
+/// place.
+fn rule(pw: &[f32; 12], cm: &[f32; 9], cp: &[f32; 3]) -> [f32; 12] {
+    let (pm, pp) = (&pw[..9], &pw[9..]);
+    let mut w = [0.0f32; 12];
+    for i in 0..3 {
+        for j in 0..3 {
+            w[3 * i + j] = (0..3).map(|k| cm[3 * i + k] * pm[3 * k + j]).sum();
+        }
+    }
+    for j in 0..3 {
+        w[9 + j] = (0..3).map(|k| cp[k] * pm[3 * k + j]).sum::<f32>() + pp[j];
+    }
+    w
+}
+
+/// The children below `node` (at `depth`) whose world values follow the rule, noted with
+/// their parent's data and their depth.
+fn derive_below(
+    node: u32,
+    depth: u32,
+    before: &HashMap<u32, [f32; 12], std::hash::BuildHasherDefault<AddrHash>>,
+    out: &mut Vec<(u32, u32, u32)>,
+    seen: &mut std::collections::HashSet<u32>,
+) {
+    let m = mem();
     let (count, array) = (m.rd32(node + CHILDREN), m.rd32(node + CHILDREN + 4));
-    if array == 0 || count > 256 {
+    let pd = m.rd32(node + 0x38);
+    if array == 0 || count > 256 || depth >= 16 || pd == 0 {
         return;
     }
     for k in 0..count {
         let child = m.rd32(array + 4 * k);
-        if child != 0 {
-            mark(child, marked, depth + 1);
+        if child == 0 || m.rd32(child + 0x34) != OBJECT {
+            continue;
+        }
+        let d = m.rd32(child + 0x38);
+        if d == 0 || !seen.insert(d) {
+            continue;
+        }
+        let (want, now): ([f32; 12], [f32; 12]) = (world_of(d, pd), vec(d + WORLD));
+        let fits = (0..9).all(|i| (want[i] - now[i]).abs() < DERIVED_MATRIX)
+            && (9..12).all(|i| (want[i] - now[i]).abs() < DERIVED_PLACE);
+        // left by the logic: the drawing's (an effect's the logic moves); or set by the logic
+        // by the rule itself (the tank's hull below it)
+        let left = before.get(&d) == Some(&now);
+        let exact = (0..9).all(|i| (want[i] - now[i]).abs() < EXACT_MATRIX)
+            && (9..12).all(|i| (want[i] - now[i]).abs() < EXACT_PLACE);
+        if fits && (left || exact) {
+            out.push((d, pd, depth + 1));
+        }
+        if fits {
+            derive_below(child, depth + 1, before, out, seen);
         }
     }
 }
 
 /// Draw (`f`) with what moved put `alpha` (of 256) of the way from the last logic frame to the
-/// newest, then the newest back. `between`: a picture between logic frames (the drawing
-/// does not make the moved objects' world values again unless marked).
-pub fn draw(alpha: Option<u32>, between: bool, f: impl FnOnce()) {
+/// newest, then the newest back; the children's world values made from either.
+pub fn draw(alpha: Option<u32>, f: impl FnOnce()) {
     let g = NOTED.lock().unwrap();
     let Some((n, alpha)) = g.as_ref().zip(alpha) else {
         drop(g);
@@ -279,21 +424,18 @@ pub fn draw(alpha: Option<u32>, between: bool, f: impl FnOnce()) {
     };
     let t = alpha as f32 / 256.0;
     let mut put_back = Vec::with_capacity(n.moving.len());
-    let mut marked = Vec::new();
-    if between {
-        for &(node, ..) in &n.moving {
-            mark(node, &mut marked, 0);
+    for &(_, d, root, before, now) in &n.moving {
+        let shown = before.mix(&now, t);
+        shown.write(d);
+        if root {
+            shown.write_world(d);
         }
+        put_back.push((d, root, now));
     }
-    for &(_, d, before, now) in &n.moving {
-        Object {
-            euler: mix_angles(&before.euler, &now.euler, t),
-            matrix: mix_matrix(&before.matrix, &now.matrix, t),
-            place: mix3(&before.place, &now.place, t),
-        }
-        .write(d);
-        put_back.push((d, now));
+    for &(d, parent) in &n.derived {
+        put(d + WORLD, &world_of(d, parent));
     }
+    let derived = n.derived.clone();
     let camera = n.camera.and_then(|(d, h)| {
         let prev = h
             .prev
@@ -311,16 +453,14 @@ pub fn draw(alpha: Option<u32>, between: bool, f: impl FnOnce()) {
     });
     drop(g);
     f();
-    for (d, o) in put_back {
+    for (d, root, o) in put_back {
         o.write(d);
-    }
-    let m = mem();
-    for (node, flags, sphere, world) in marked {
-        m.wr32(node + FLAGS, flags);
-        put(node + SPHERE, &sphere);
-        if let Some(world) = world {
-            put(m.rd32(node + 0x38) + WORLD, &world);
+        if root {
+            o.write_world(d);
         }
+    }
+    for (d, parent) in derived {
+        put(d + WORLD, &world_of(d, parent));
     }
     if let Some((d, c)) = camera {
         c.write(d);
