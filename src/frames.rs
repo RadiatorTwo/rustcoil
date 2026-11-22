@@ -27,6 +27,12 @@ pub const LOGIC_FPS: u32 = 60;
 /// Pictures a second when the display's refresh rate is unknown.
 const DEFAULT_FPS: f64 = 60.0;
 
+/// The most pictures a second: what the game reaches with room to spare (~400 at most in a
+/// mission on a fast computer, 2026). A faster display gets a picture every second (third...)
+/// refresh: missing refreshes now and then (400 pictures on 480 Hz) the tank flickered and
+/// blurred as it moved.
+const MAX_FPS: f64 = 240.0;
+
 /// The game's clock: real time since the last call into `NOW`/`LAST`, the time step (times
 /// `SCALE`, which it sets back to 1, at most `MAX_STEP` while `CLAMP`) into `STEP` and
 /// `GAME_TIME`, the unscaled step into `RAW_STEP` and `TOTAL`.
@@ -143,10 +149,12 @@ static PACER: Pacer = Pacer::new();
 /// The number of the last logic frame.
 static LAST: Mutex<u64> = Mutex::new(0);
 
-/// A picture each refresh of the display the window is on.
+/// A picture each refresh of the display the window is on, or each second (third...) refresh
+/// above `MAX_FPS`. With vsync (`main.rs`) every picture is then shown equally long.
 fn period() -> Duration {
     let hz = win32::platform::window::refresh_hz().unwrap_or(DEFAULT_FPS);
-    Duration::from_secs_f64(1.0 / hz)
+    let every = (hz / MAX_FPS).ceil().max(1.0);
+    Duration::from_secs_f64(every / hz)
 }
 
 fn rdf(a: Us) -> f32 {
@@ -191,7 +199,7 @@ pub fn game_clock(c: &mut Cpu) {
     wrf(GAME_TIME, game_time + step);
 }
 
-/// Glide's buffer swap: a picture each refresh of the display.
+/// Glide's buffer swap: the pictures' pace (`period`).
 pub struct Frames;
 
 pub static FRAMES: Frames = Frames;
