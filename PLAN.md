@@ -207,3 +207,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   (the briefing waits without messages). Each device object also has its own event buffer now
   (Acquire cleared the shared one). Checked: Space at 7 different times skips every time
   (before: 2 of 7).
+- Tank turning far too fast (2026-11-22): not the input change (the user's recording played
+  the same with the build before it). Recoil ran unbraked, ~550 pictures a second in a mission;
+  its turning is not made for that (it times frames with timeGetTime, 0x463140, but something
+  inside does not scale). Replayed at 30 fps the tank turns evenly over ~2.5 s. Pictures are
+  now paced to at most 60 a second (`Frames` in main.rs, Glide's `frame_shown`). Open: whether
+  60 turns as the original did (the user checks; 30 is the fallback).

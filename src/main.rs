@@ -10,7 +10,7 @@ mod hooks;
 
 use recomp::smc::SmcSpec;
 use recomp::ver::Version;
-use win32::{Game, Identity};
+use win32::{Game, GlideExt, Identity};
 
 /// The versions of the game's EXE this port knows; the first is the reference version: every
 /// address in this crate (hooks, symbols.txt) is one of its addresses (`Us(0x...)`).
@@ -84,12 +84,41 @@ impl Game for MyGame {
         hooks::all()
     }
 
+    fn glide(&self) -> Option<&'static dyn GlideExt> {
+        Some(&FRAMES)
+    }
+
     fn on_start(&self) {
         recomp::image::set_symbols(include_str!("../data/symbols.txt"));
     }
 }
 
 static GAME: MyGame = MyGame;
+
+/// Recoil's logic is not made for hundreds of frames a second: unbraked it ran ~550 in a
+/// mission and the tank turned far too fast (at 30 fps it turns evenly). Pictures are paced to
+/// at most `MAX_FPS`.
+struct Frames;
+
+static FRAMES: Frames = Frames;
+
+const MAX_FPS: f64 = 60.0;
+
+impl GlideExt for Frames {
+    fn frame_shown(&self) {
+        use std::time::{Duration, Instant};
+        static NEXT: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+        let step = Duration::from_secs_f64(1.0 / MAX_FPS);
+        let mut next = NEXT.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        // the slot after the last; a frame late by more than one slot starts the schedule anew
+        let due = next.unwrap_or(now).max(now - step);
+        if due > now {
+            std::thread::sleep(due - now);
+        }
+        *next = Some(due + step);
+    }
+}
 
 fn main() {
     win32::run(&GAME)
