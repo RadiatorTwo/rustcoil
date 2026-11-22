@@ -184,3 +184,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   and the real one no longer fit. Far calls and jumps through memory now count as "not compiled
   code" (`plausible`, test `far_call_is_no_function`); the only change in the list: 0x41f886 out,
   0x41f6f0 in.
+- Music in missions (2026-11-22): Recoil plays one track with MCI_NOTIFY (0x4a2680, mode 5)
+  and starts it again on MM_MCINOTIFY successful (0x4a2730, from the window procedure): without
+  the notification every piece played once and then stayed silent. The message loop now posts
+  it when the track has ended (`cdaudio::poll`); a new play or a stop sends superseded /
+  aborted. Menu: track 2; missions: track 2 + n mod 3 (0x42f239). Tracks 3 and 4 begin with
+  35-45 s of very quiet music. Checked: track 2 starts again after 213 s (its length).
