@@ -28,6 +28,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [ ] setup from the CD or a CD image (`required`, `video_marker`)
 - [ ] high frame rate (GUIDE 8b): logic fixed at 60 a second (done); pictures between logic
   frames, interpolated (open)
+- [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
 - [ ] high resolution, widescreen, settings
 - [ ] gamepad
 - [ ] release (tag `v*`)

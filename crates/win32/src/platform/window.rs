@@ -1185,6 +1185,14 @@ impl ApplicationHandler for App {
                         }
                         return;
                     }
+                    // F12: the frame rate display on or off (the game does not see the key)
+                    if code == KeyCode::F12 {
+                        if down && !event.repeat {
+                            super::stats::toggle();
+                            self.draw();
+                        }
+                        return;
+                    }
                     // F11 while recording: a mark with a picture (the game does not see the key)
                     if code == KeyCode::F11 && super::record::on() {
                         if down && !event.repeat {
