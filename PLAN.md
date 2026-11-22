@@ -246,7 +246,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   matrix and place (+0x30, +0x54) and the same in the world (+0x60, +0x84); the drawing draws
   from the world's, made again from the own ones only while the node is marked changed
   (node+0x2c bit 4: set by the logic, cleared by the drawing). Only the own values
-  interpolated, the tank moved in each logic frame's picture and stood still in between. Now
-  both are interpolated (and the bounding sphere at node+0x64 put back). On the way: pictures
+  interpolated, the tank moved in each logic frame's picture and stood still in between.
+  Interpolating the world values as noted after the logic failed badly (positions and
+  pictures apart): a child's world values are made only while drawing, noted a frame old and
+  put back they fell further behind. Now a picture between logic frames marks what moved and
+  its children (node+0x5c count, +0x60 array) changed itself, and puts world values, sphere
+  (node+0x64) and mark back as they were right before it. On the way: pictures
   are paced before they are shown (`GlideExt::before_shown`), kept halfway between the
   display's refreshes (`Pacer::pace_on`, `window::vblank`), at most 240 a second.
