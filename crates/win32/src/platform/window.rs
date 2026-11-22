@@ -380,6 +380,19 @@ const FN: [KeyCode; 12] = [
     KeyCode::F12,
 ];
 
+/// The key of `Game::fps_key`.
+fn fps_key() -> Option<KeyCode> {
+    static KEY: std::sync::OnceLock<Option<KeyCode>> = std::sync::OnceLock::new();
+    *KEY.get_or_init(|| {
+        let name = crate::game::game().fps_key();
+        let key = key_by_name(name);
+        if key.is_none() && !name.is_empty() {
+            log!("fps_key: unknown key {name}");
+        }
+        key
+    })
+}
+
 fn key_by_name(n: &str) -> Option<KeyCode> {
     use KeyCode::*;
     const LETTERS: [KeyCode; 26] = [
@@ -1185,8 +1198,8 @@ impl ApplicationHandler for App {
                         }
                         return;
                     }
-                    // F12: the frame rate display on or off (the game does not see the key)
-                    if code == KeyCode::F12 {
+                    // the frame rate display on or off (`Game::fps_key`; the game does not see it)
+                    if Some(code) == fps_key() {
                         if down && !event.repeat {
                             super::stats::toggle();
                             self.draw();

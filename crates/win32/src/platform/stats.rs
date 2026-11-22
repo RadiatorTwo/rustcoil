@@ -1,5 +1,6 @@
-//! The setting "ShowFps" (REG_DWORD in the game's key, default off; F12 switches it,
-//! `<PREFIX>_STATS=0/1` over it; on with `<PREFIX>_SAMPLE=1` too): frames a second and frame times,
+//! The setting "ShowFps" (REG_DWORD in the game's key, default off; `Game::fps_key` switches
+//! it, F12 unless the game names another; `<PREFIX>_STATS=0/1` over it; on with
+//! `<PREFIX>_SAMPLE=1` too): frames a second and frame times,
 //! drawn by us in the window's top left corner, so no overlay tool (RivaTuner) has to hook into
 //! our GL. Counted are the new pictures shown (`picture`: Glide's and 2D frames), not the
 //! window's repaints. The text is the last half second's: frames a second and the mean frame
@@ -21,7 +22,7 @@ pub fn on() -> bool {
     SHOW.get() || *SAMPLE.get_or_init(|| recomp::config::env_on("SAMPLE"))
 }
 
-/// F12: the display on or off, saved. Shown again, it starts anew (the frames while it was
+/// `Game::fps_key`: the display on or off, saved. Shown again, it starts anew (the frames while it was
 /// off were not counted).
 pub fn toggle() {
     let on = !SHOW.get();
