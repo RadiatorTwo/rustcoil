@@ -157,3 +157,10 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   Seen while testing: with `RUSTCOIL_SHOT` and the present thread, pictures sometimes stop
   (the game goes on): use `RUSTCOIL_PRESENT=0` for screenshot runs until that is found.
   Open: the HUD's radar looks empty (not checked); grTexCombine alpha ZERO is taken as LOCAL.
+- Lost game files (2026-11-22): a start without the EXE's path runs the kit's setup, and its
+  cleanup ("what the game does not need") put everything in game_files into the recycle bin that
+  `Identity` did not list: the CD image and all of Recoil's files but the EXE, maps and zbd.
+  The cleanup is gone (setup removes nothing now); DeleteFileA only deletes inside the game
+  folder, and nothing is written outside it. Restored from the CD image (rtools iso / iscab, the
+  groups as above). ShowOwnedPopups and WinHelpA (closing) added. Open: closing the window in the
+  menu does not end the game.
