@@ -241,3 +241,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   alternated 1.80/1.54 degrees; now pictures go on until one is shown at the due time. At 480
   Hz the game reaches ~400 pictures a second (the logic frame's picture misses a refresh now
   and then): performance work later.
+- Objects lagged and jumped between logic frames (2026-11-22, the user: only the tank and
+  other vehicles, never the surroundings; not on screenshots): an object's data holds its own
+  matrix and place (+0x30, +0x54) and the same in the world (+0x60, +0x84); the drawing draws
+  from the world's, made again from the own ones only while the node is marked changed
+  (node+0x2c bit 4: set by the logic, cleared by the drawing). Only the own values
+  interpolated, the tank moved in each logic frame's picture and stood still in between. Now
+  both are interpolated (and the bounding sphere at node+0x64 put back). On the way: pictures
+  are paced before they are shown (`GlideExt::before_shown`), kept halfway between the
+  display's refreshes (`Pacer::pace_on`, `window::vblank`), at most 240 a second.

@@ -5,8 +5,13 @@
 //! node in one list (`ALL_NODES`), the camera alone in another (`CAMERAS`). A node's type is at
 //! +0x34, its data at +0x38. The drawing (0x44f670) works from the nodes' own values each time:
 //!
-//! - an object (type 5): Euler angles at data+0x18, a 3x3 matrix at +0x30, its place at +0x54
-//!   (an object moved while drawing is drawn there);
+//! - an object (type 5): Euler angles at data+0x18, a 3x3 matrix at +0x30, its place at +0x54,
+//!   and the same in the world (its parents applied) at +0x60 and +0x84. The drawing takes the
+//!   world's values, made again from the others only while the node is marked changed
+//!   (node+0x2c bit 4, set by the logic, cleared by the drawing; its bounding sphere at
+//!   node+0x64 made again too). Interpolating only the object's own values, the tank moved in
+//!   each logic frame's picture and stood still in the pictures between: it lagged behind and
+//!   jumped ahead (the surroundings, drawn by the camera alone, did not);
 //! - the camera (type 1): place at data+0x14, Euler angles at +0x20, the same again at +0x2c and
 //!   +0x38 (its matrices at +0x44 and +0x188 are made from them while drawing).
 //!
@@ -27,6 +32,10 @@ const CAMERAS: u32 = 8;
 const OBJECT: u32 = 5;
 const CAMERA: u32 = 1;
 
+/// A node's bounding sphere (centre, radius), made again by the drawing from a changed
+/// object's places.
+const SPHERE: u32 = 0x64;
+
 /// A move larger than this in one logic frame (1/60 s) is a jump.
 const JUMP: f32 = 200.0;
 
@@ -36,6 +45,9 @@ struct Object {
     euler: [f32; 3],
     matrix: [f32; 9],
     place: [f32; 3],
+    /// the world's matrix and place (the parents' applied)
+    world: [f32; 9],
+    world_place: [f32; 3],
 }
 
 /// The camera's values: place and Euler angles, twice.
@@ -68,8 +80,9 @@ type Objects = HashMap<u32, Hist<Object>, std::hash::BuildHasherDefault<AddrHash
 struct Noted {
     /// every object's values at the last two logic frames, by data address
     objects: Objects,
-    /// the objects that moved in the newest logic frame: (data, before, now)
-    moving: Vec<(u32, Object, Object)>,
+    /// the objects that moved in the newest logic frame (a parent's move moves its children's
+    /// world places): (node, data, before, now)
+    moving: Vec<(u32, u32, Object, Object)>,
     camera: Option<(u32, Hist<Camera>)>,
 }
 
@@ -116,6 +129,8 @@ impl Object {
             euler: vec(d + 0x18),
             matrix: vec(d + 0x30),
             place: vec(d + 0x54),
+            world: vec(d + 0x60),
+            world_place: vec(d + 0x84),
         }
     }
 
@@ -123,6 +138,18 @@ impl Object {
         put(d + 0x18, &self.euler);
         put(d + 0x30, &self.matrix);
         put(d + 0x54, &self.place);
+        put(d + 0x60, &self.world);
+        put(d + 0x84, &self.world_place);
+    }
+
+    fn mix(&self, b: &Object, t: f32) -> Object {
+        Object {
+            euler: mix_angles(&self.euler, &b.euler, t),
+            matrix: mix_matrix(&self.matrix, &b.matrix, t),
+            place: mix3(&self.place, &b.place, t),
+            world: mix_matrix(&self.world, &b.world, t),
+            world_place: mix3(&self.world_place, &b.world_place, t),
+        }
     }
 }
 
@@ -165,8 +192,9 @@ pub fn noted(frame: u64) {
             prev: None,
         });
         *h = Hist::note(Some(&*h), frame, now);
-        if let Some(before) = h.prev.filter(|p| *p != now && !far(&p.place, &now.place)) {
-            n.moving.push((d, before, now));
+        let jump = |p: &Object| far(&p.place, &now.place) || far(&p.world_place, &now.world_place);
+        if let Some(before) = h.prev.filter(|p| *p != now && !jump(p)) {
+            n.moving.push((node, d, before, now));
         }
     }
     // objects gone (their data may be another's now)
@@ -234,14 +262,9 @@ pub fn draw(alpha: Option<u32>, f: impl FnOnce()) {
     };
     let t = alpha as f32 / 256.0;
     let mut put_back = Vec::with_capacity(n.moving.len());
-    for &(d, before, now) in &n.moving {
-        Object {
-            euler: mix_angles(&before.euler, &now.euler, t),
-            matrix: mix_matrix(&before.matrix, &now.matrix, t),
-            place: mix3(&before.place, &now.place, t),
-        }
-        .write(d);
-        put_back.push((d, now));
+    for &(node, d, before, now) in &n.moving {
+        before.mix(&now, t).write(d);
+        put_back.push((node, d, now, vec::<4>(node + SPHERE)));
     }
     let camera = n.camera.and_then(|(d, h)| {
         let prev = h
@@ -260,8 +283,9 @@ pub fn draw(alpha: Option<u32>, f: impl FnOnce()) {
     });
     drop(g);
     f();
-    for (d, o) in put_back {
+    for (node, d, o, sphere) in put_back {
         o.write(d);
+        put(node + SPHERE, &sphere);
     }
     if let Some((d, c)) = camera {
         c.write(d);
