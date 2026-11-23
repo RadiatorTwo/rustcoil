@@ -55,7 +55,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   Westwood Online (WOLAPI) is also looked up.
 - Unsupported instructions: MMX only, in 10 functions (0x48d560..0x49ec70), plus noise
   (fbstp/iretd decoded from data in sub_414450). The kit reports no MMX in CPUID, so the
-  game should not call them: check before lifting MMX.
+  game should not call them: check before lifting MMX. Checked (2026-11-23, `RUSTCOIL_COUNT`
+  over `game_files/turn.txt`): they are the software renderer's 15/16-bit span drawers (MMX
+  versions picked by bit 4 of [0x637070] in 0x48fdd0 and 0x48d7f0, for 555/565 by
+  [0x582d98]). With Glide neither they nor their plain versions (0x49e710, 0x49c3b0, ...)
+  are ever called: lifting MMX would gain nothing.
 - Imports: 193 by ordinal from MFC42.DLL, 88 MSVCRT, 2 MSVCP50, AVIFIL32 / MSVFW32 (the AVI
   videos), the usual Windows and DirectX ones. Plan: load the CD's own MFC42 / MSVCRT /
   MSVCP50 as guest DLLs and recompile them with the EXE (`Image::combine`; black_white's
