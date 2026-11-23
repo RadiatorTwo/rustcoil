@@ -309,10 +309,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   DPERR_UNAVAILABLE). The 196 still missing are MFC's and MSVCRT's, unused so far.
 - Widescreen (2026-11-23, GUIDE 8c): the projection is 0x474480 (stdcall: left, top, half
   width, half height, x scale, y scale, near, far), called only by the view setup 0x479d60;
-  one view a picture (mission: 0, 26, 320, 185). Everything (screen x scale [0x57b140], its
-  inverse for visibility [0x56a6f8]) follows from the x scale: times (4/3)/aspect during the
-  mission's picture (world_draw), drawn over the whole frame; the HUD afterwards in the 4:3
-  middle. The 3D is drawn over the whole screen behind the HUD, so the sides show the world.
-  The game clips the 3D itself: grClipWindow stays 640x480. Menus, briefings, the flyover
-  stay 4:3 (wide only within 250 ms of a mission picture). Open: two red direction
-  triangles at the bottom of the view where 4:3 shows one (to check in play).
+  one view a picture (mission: 0, 26, 320, 185; the game clips its 3D to rows 26..396 itself,
+  grClipWindow stays 640x480). Narrowing only the projection's x scale was not enough: the
+  game's visibility tests use the camera's angle (+0xe8 field of view, +0xf0 half, +0x1d4 =
+  1/tan(half); made by 0x44a460 from base and zoom), so the sides showed stale pictures. Now
+  the angle is widened during world_draw (every 3D polygon is drawn in it) and put back.
+  The HUD is LFB pixels after the picture, its bars written only once (they stay in the
+  frame): clipping the 3D to the whole height painted over them, so beside the bars the
+  frame stays black. Open: the target zoom's 3D (in the same pass, clipped to its box at
+  the lower left) lands at the wide picture's lower left, not in its box.
