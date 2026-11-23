@@ -2469,6 +2469,11 @@ pub fn set_space(space: Option<(u32, u32)>) {
     });
 }
 
+/// The aspect of the frame being drawn (4/3 while Glide is closed).
+pub fn frame_aspect() -> f32 {
+    with(|g, _| g.target.0 as f32 / g.target.1.max(1) as f32).unwrap_or(4.0 / 3.0)
+}
+
 /// Where the vertices that follow go in the frame.
 pub fn set_view(view: View) {
     with(|g, gl| {

@@ -102,7 +102,9 @@ fn logic(c: &mut Cpu) {
 /// picture is shown.
 fn render(c: &mut Cpu) {
     let alpha = CLOCK.alpha(PACER.next_shown());
+    crate::wide::views_begin();
     crate::pictures::draw(alpha, || call_original(c, RENDER.at()));
+    crate::wide::views_end();
 }
 
 fn input(c: &mut Cpu) {
@@ -241,6 +243,10 @@ pub struct Frames;
 pub static FRAMES: Frames = Frames;
 
 impl GlideExt for Frames {
+    fn aspect(&self, window: Option<f32>) -> f32 {
+        crate::wide::aspect(window)
+    }
+
     fn before_shown(&self) {
         let p = pace();
         win32::platform::gl::set_vsync(!unpaced());

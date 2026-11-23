@@ -10,6 +10,7 @@ mod draw;
 mod frames;
 mod hooks;
 mod pictures;
+mod wide;
 
 use recomp::smc::SmcSpec;
 use recomp::ver::Version;

@@ -20,7 +20,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 
 - [x] the first level starts and plays (played through by hand 2026-11-23; level 2 loads)
 - [x] sound, music, videos
-- [ ] saving and loading
+- [x] saving and loading (tried by hand 2026-11-23: a save in level 2 loads)
 - [ ] the whole game played through
 
 ## 4. Port
@@ -31,7 +31,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [ ] speed (GUIDE 8a): ~400 to ~850 pictures a second unpaced in the first mission
   (2026-11-22); next: 0x487f90, 0x477bb0, 0x4b0370, 0x47f050 (~35 %, spread thin)
 - [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
-- [ ] high resolution, widescreen, settings
+- [ ] high resolution, widescreen, settings (resolution: drawn at the window's size or
+  `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; a settings menu: not yet)
 - [ ] gamepad
 - [ ] release (tag `v*`)
 
@@ -306,3 +307,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   the host's own program), GetOpenFileNameA (no dialog: cancelled; the skipped launcher's),
   WSAStartup / WSACleanup (only the version is read), DirectPlayLobbyCreateA (no lobby:
   DPERR_UNAVAILABLE). The 196 still missing are MFC's and MSVCRT's, unused so far.
+- Widescreen (2026-11-23, GUIDE 8c): the projection is 0x474480 (stdcall: left, top, half
+  width, half height, x scale, y scale, near, far), called only by the view setup 0x479d60;
+  one view a picture (mission: 0, 26, 320, 185). Everything (screen x scale [0x57b140], its
+  inverse for visibility [0x56a6f8]) follows from the x scale: times (4/3)/aspect during the
+  mission's picture (world_draw), drawn over the whole frame; the HUD afterwards in the 4:3
+  middle. The 3D is drawn over the whole screen behind the HUD, so the sides show the world.
+  The game clips the 3D itself: grClipWindow stays 640x480. Menus, briefings, the flyover
+  stay 4:3 (wide only within 250 ms of a mission picture). Open: two red direction
+  triangles at the bottom of the view where 4:3 shows one (to check in play).

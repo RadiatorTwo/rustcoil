@@ -21,6 +21,7 @@ pub fn all() -> Vec<(u32, Hook)> {
     let mut v: Vec<(u32, Hook)> = table.iter().map(|&(a, h)| (a.at(), h)).collect();
     v.extend(crate::frames::hooks());
     v.extend(crate::draw::hooks());
+    v.extend(crate::wide::hooks());
     v
 }
 
