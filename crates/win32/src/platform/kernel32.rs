@@ -1669,6 +1669,17 @@ fn get_current_directory(c: &mut Cpu) -> u32 {
     put_cstr(buf, dir, n)
 }
 
+/// GetTempPathA(n, buf): the game's folder, with a backslash (Recoil writes its gamez.err and
+/// gamez.out there when the current folder cannot be written).
+fn get_temp_path(c: &mut Cpu) -> u32 {
+    let (n, buf) = (arg(c, 0), arg(c, 1));
+    let dir = format!("{}\\", crate::game::id().install_dir.trim_end_matches('\\'));
+    if dir.len() as u32 >= n {
+        return dir.len() as u32 + 1;
+    }
+    put_cstr(buf, &dir, n)
+}
+
 /// SetCurrentDirectoryA: relative paths stay the game folder's.
 fn set_current_directory(c: &mut Cpu) -> u32 {
     if super::trace_api() {
@@ -1956,6 +1967,7 @@ pub const IMPORTS: &[Import] = &[
     ("GetFileSize", 2, get_file_size),
     ("GetCurrentDirectoryA", 2, get_current_directory),
     ("SetCurrentDirectoryA", 1, set_current_directory),
+    ("GetTempPathA", 2, get_temp_path),
     ("GetFullPathNameA", 4, get_full_path_name),
     ("CreateDirectoryA", 2, create_directory),
     ("DeleteFileA", 1, delete_file),

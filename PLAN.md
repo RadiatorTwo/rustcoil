@@ -300,3 +300,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - Level 1 played through by hand (2026-11-23): at its end the game crashed on the missing
   KERNEL32!CompareFileTime (0x4346b0 compares two FILETIMEs at +0x14 of found files, the
   last write time: it sorts files by age). Implemented; level 2 then loads.
+- The EXE's own imports are all there now (2026-11-23): GetTempPathA (the game folder; for
+  gamez.err/out), MessageBoxExA (= MessageBoxA), OpenIcon, GetSystemPaletteEntries (no
+  palette device), FindExecutableA / ShellExecuteA (Docs\Index.html, the manual, opened by
+  the host's own program), GetOpenFileNameA (no dialog: cancelled; the skipped launcher's),
+  WSAStartup / WSACleanup (only the version is read), DirectPlayLobbyCreateA (no lobby:
+  DPERR_UNAVAILABLE). The 196 still missing are MFC's and MSVCRT's, unused so far.
