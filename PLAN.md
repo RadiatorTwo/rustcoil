@@ -18,7 +18,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 
 ## 3. Playing
 
-- [ ] the first level starts and plays (it starts, textured; driving and fighting not tried)
+- [x] the first level starts and plays (played through by hand 2026-11-23; level 2 loads)
 - [x] sound, music, videos
 - [ ] saving and loading
 - [ ] the whole game played through
@@ -297,3 +297,6 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   made it 10 % slower (old values lived on), defining them 0 is even. Loop heads no longer
   store the registers for `rt_yield`. Unpaced measuring allows 64 pictures a logic frame
   (16 capped it at 960).
+- Level 1 played through by hand (2026-11-23): at its end the game crashed on the missing
+  KERNEL32!CompareFileTime (0x4346b0 compares two FILETIMEs at +0x14 of found files, the
+  last write time: it sorts files by age). Implemented; level 2 then loads.

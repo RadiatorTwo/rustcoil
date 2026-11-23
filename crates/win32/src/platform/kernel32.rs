@@ -286,6 +286,13 @@ fn file_time_to_system_time(c: &mut Cpu) -> u32 {
     1
 }
 
+/// CompareFileTime(FILETIME*, FILETIME*): -1, 0 or 1.
+fn compare_file_time(c: &mut Cpu) -> u32 {
+    let m = mem();
+    let ft = |p: u32| m.rd32(p) as u64 | (m.rd32(p + 4) as u64) << 32;
+    ft(arg(c, 0)).cmp(&ft(arg(c, 1))) as i32 as u32
+}
+
 /// SystemTimeToFileTime(SYSTEMTIME*, FILETIME*)
 fn system_time_to_file_time(c: &mut Cpu) -> u32 {
     let m = mem();
@@ -1930,6 +1937,7 @@ pub const IMPORTS: &[Import] = &[
     ("LocalFileTimeToFileTime", 2, file_time_to_local_file_time),
     ("FileTimeToSystemTime", 2, file_time_to_system_time),
     ("SystemTimeToFileTime", 2, system_time_to_file_time),
+    ("CompareFileTime", 2, compare_file_time),
     ("GetUserDefaultLCID", 0, get_user_default_lcid),
     ("GetThreadLocale", 0, get_user_default_lcid),
     ("GetSystemDefaultLangID", 0, get_user_default_lcid),
