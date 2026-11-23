@@ -8,7 +8,8 @@
 //! keeps its horizontal field of view (+0xe8), its half (+0xf0) and the x scale 1/tan(half)
 //! (+0x1d4); its visibility tests use the angle. In a wide mission picture (`views_begin` to
 //! `views_end`, world_draw: every 3D polygon is drawn in there) the angle is widened so the
-//! x scale is k = (4/3) / aspect of the game's, and the picture is drawn over the whole frame
+//! x scale is k = (4/3) / aspect of the game's (its visibility frustum made again with it),
+//! and the picture is drawn over the whole frame
 //! (`View::Full`): the game still draws into its 640 columns, stretched by 1/k, so the
 //! proportions are right and the sides show more of the world.
 //!
@@ -21,13 +22,13 @@
 //!
 //! On by default; REG_DWORD `Widescreen` 0 in the game's key turns it off.
 
-use recomp::rt::{Cpu, ESP, Hook, call_original};
+use recomp::rt::{Cpu, ECX, ESP, Hook, call_original};
 use recomp::ver::Us;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use win32::platform::glide::{self, View};
-use win32::platform::mem;
+use win32::platform::{guest_call, mem};
 use win32::platform::setting::Setting;
 
 static WIDE: Setting = Setting::new("Widescreen", "WIDE", true);
@@ -113,6 +114,16 @@ const HALF_X: u32 = 0xf0;
 const SCALE_X: u32 = 0x1d4;
 /// The fields put back after the picture.
 const WIDENED: [u32; 3] = [FOV_X, HALF_X, SCALE_X];
+/// The camera's visibility frustum. The camera update (0x44aa80, before the picture) makes
+/// it only when the angles changed: the corners of the near plane (x at these fields,
+/// ±tan(fov / 2) * near) when +0xf8 is set, the six planes (0x47a140, from the half angles,
+/// into +0x13c) when +0x138 is set; 0x47a250 turns the planes into world space (+0x188).
+const NEAR: u32 = 0xb4;
+const CORNERS_X: [u32; 4] = [0x108, 0x114, 0x120, 0x12c];
+const CORNERS_DIRTY: u32 = 0xf8;
+const PLANES_DIRTY: u32 = 0x138;
+const PLANES: Us = Us(0x47a140);
+const PLANES_WORLD: Us = Us(0x47a250);
 
 /// The camera's fields as the game set them, while the picture uses wider ones.
 static SAVED: Mutex<Option<(u32, [u32; 3])>> = Mutex::new(None);
@@ -122,7 +133,8 @@ static SAVED: Mutex<Option<(u32, [u32; 3])>> = Mutex::new(None);
 /// angle, the projection the scale: both see the wider picture. Put back after the picture.
 fn projection(c: &mut Cpu) {
     let m = mem();
-    let at = |k: u32| c.r[ESP] + 4 + 4 * k;
+    let esp = c.r[ESP];
+    let at = |k: u32| esp + 4 + 4 * k;
     let half_w = f32::from_bits(m.rd32(at(2)));
     if IN_VIEWS.load(Ordering::Relaxed) && wide_now() && half_w * 2.0 >= SCREEN_W {
         let k = (4.0 / 3.0) / glide::frame_aspect();
@@ -136,6 +148,18 @@ fn projection(c: &mut Cpu) {
             m.wr32(cam + FOV_X, (2.0 * half).to_bits());
             m.wr32(cam + HALF_X, half.to_bits());
             m.wr32(cam + SCALE_X, scale.to_bits());
+            // the visibility tests' frustum, made from the angles only when they change
+            let near = f32::from_bits(m.rd32(cam + NEAR));
+            let x = half.tan() * near;
+            for (o, v) in CORNERS_X.into_iter().zip([x, -x, x, -x]) {
+                m.wr32(cam + o, v.to_bits());
+            }
+            let regs = c.r;
+            c.r[ECX] = cam;
+            guest_call(c, PLANES.at(), &[]);
+            c.r[ECX] = cam;
+            guest_call(c, PLANES_WORLD.at(), &[]);
+            c.r = regs;
         }
         let x_scale = f32::from_bits(m.rd32(at(4)));
         m.wr32(at(4), (x_scale * k).to_bits());
@@ -150,5 +174,8 @@ fn put_back() {
         for (o, v) in WIDENED.into_iter().zip(old) {
             m.wr32(cam + o, v);
         }
+        // the game's next camera update makes its frustum again from its own angles
+        m.wr32(cam + PLANES_DIRTY, 1);
+        m.wr32(cam + CORNERS_DIRTY, 1);
     }
 }

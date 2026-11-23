@@ -314,6 +314,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   game's visibility tests use the camera's angle (+0xe8 field of view, +0xf0 half, +0x1d4 =
   1/tan(half); made by 0x44a460 from base and zoom), so the sides showed stale pictures. Now
   the angle is widened during world_draw (every 3D polygon is drawn in it) and put back.
+  The camera's frustum is made from the angles only when they change (camera update
+  0x44aa80, before the picture): near-plane corners (+0x108.., flag +0xf8) and six planes
+  (0x47a140 into +0x13c, flag +0x138; 0x47a250 into world space +0x188). Left narrow, it
+  culled objects and large terrain pieces at the sides (2026-11-24): the hook now makes
+  them again with the wide angle and sets both flags after the picture.
   The HUD is LFB pixels after the picture, its bars written only once (they stay in the
   frame): clipping the 3D to the whole height painted over them, so beside the bars the
   frame stays black. Open: the target zoom's 3D (in the same pass, clipped to its box at
