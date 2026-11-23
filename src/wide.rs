@@ -21,7 +21,7 @@
 //!
 //! On by default; REG_DWORD `Widescreen` 0 in the game's key turns it off.
 
-use recomp::rt::{Cpu, ECX, ESP, Hook, call_original};
+use recomp::rt::{Cpu, ESP, Hook, call_original};
 use recomp::ver::Us;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,10 +34,6 @@ static WIDE: Setting = Setting::new("Widescreen", "WIDE", true);
 
 /// stdcall(left, top, half width, half height, x scale, y scale, near, far): the projection.
 const PROJECTION: Us = Us(0x474480);
-/// fastcall(layer, rect): draws a layer of the queued polygons (Glide calls), clipped to the
-/// rectangle (none: the screen). The mission frame draws layer 0 (the world) right after
-/// world_draw, then layer 1 (the target zoom, in its rectangle).
-const DRAW_LAYER: Us = Us(0x4c26b0);
 /// Clears the frame for a new picture (grBufferClear, grClipWindow, grRenderBuffer).
 const FRAME_BEGIN: Us = Us(0x4a6810);
 
@@ -56,7 +52,6 @@ static IN_VIEWS: AtomicBool = AtomicBool::new(false);
 pub fn hooks() -> Vec<(u32, Hook)> {
     vec![
         (PROJECTION.at(), projection),
-        (DRAW_LAYER.at(), draw_layer),
         (FRAME_BEGIN.at(), frame_begin),
     ]
 }
@@ -104,19 +99,6 @@ fn frame_begin(c: &mut Cpu) {
         glide::set_view(View::Full);
     }
     call_original(c, FRAME_BEGIN.at());
-    if wide {
-        glide::set_view(View::Hud(0.5));
-    }
-}
-
-/// The world's layer over the whole wide frame, the others in its 4:3 middle.
-fn draw_layer(c: &mut Cpu) {
-    let wide = wide_now();
-    if wide {
-        let world = c.r[ECX] == 0;
-        glide::set_view(if world { View::Full } else { View::Hud(0.5) });
-    }
-    call_original(c, DRAW_LAYER.at());
     if wide {
         glide::set_view(View::Hud(0.5));
     }
