@@ -33,6 +33,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
 - [ ] high resolution, widescreen, settings (resolution: drawn at the window's size or
   `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; a settings menu: not yet)
+  Widescreen, open (the user's test, 2026-11-24):
+  - [ ] aiming: the aim no longer matches where the projectiles go
+  - [ ] the mouse stops where the old 4:3 picture's edge was
+  - [ ] the target zoom's 3D lands outside the HUD (at the wide picture's lower left)
+  - [ ] resizing the window blacks out the HUD: it is not drawn again, only the parts that
+    change (health bars)
 - [ ] gamepad
 - [ ] release (tag `v*`)
 
