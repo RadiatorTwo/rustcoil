@@ -35,8 +35,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; a settings menu: not yet)
   Widescreen, open (the user's test, 2026-11-24):
   - [x] aiming: the aim no longer matches where the projectiles go
-  - [ ] the mouse stops where the old 4:3 picture's edge was (plan, the user's choice: our own
-    reticle, replaceable later, drawn over the whole frame; the game's hidden)
+  - [x] the mouse stops where the old 4:3 picture's edge was (our own reticle, `reticle.rs`)
   - [x] the target zoom's 3D lands outside the HUD (at the wide picture's lower left)
   - [ ] resizing the window blacks out the HUD: it is not drawn again, only the parts that
     change (health bars)
@@ -341,14 +340,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   stayed wide after the picture; 0x474c40 turns screen points into directions with 0x56a720
   (the aim 0x4113eb, the hit tests 0x49aa80), so shots went off the more to the side. They
   are put back to the game's own after the picture (tested by hand: shots go to the mark).
-  Mouse range (2026-11-24, open): in a mission too [0x565b6c] is 0, so our hook on 0x470570
-  (`hooks.rs`) sets the game's mouse from `user32::mouse_pos`, which `window.rs` frame_pos
-  clamps to the 640 columns. Letting frame_pos reach the wide picture's sides (clamp to
-  -side..640+side, side = (w k - 640) / 2) works: the aim follows, the tank turns. But the
-  game then draws no reticle at all (not our scissor: tried). The reticle is no Glide
-  polygon (traced): LFB pixels, drawn inside 0x411070 (skipping it hides the reticle) but
-  not by 0x411880, 0x411b50, 0x417210, 0x4c0dd0, 0x412c70 (HUD root vt[0]), 0x40eda0, nor
-  the 0x40faa0 child; the HUD's widget containers (0x4e9d90, [0x570c7c], [0x570c78],
-  [0x4eac70]) call vt[9] (+0x24) of their children (0x4c0070), mostly 0x4b79c0. Left: the
-  virtual calls at the start of 0x411070 ([0x4e9da8] vt[3] 0x407130, [0x4ea5b4]/[0x4ea704]
-  vt[1] 0x4bebc0) and 0x4b79c0 per child (filter by object).
+  Mouse range (2026-11-24): in a mission too [0x565b6c] is 0, so our hook on 0x470570
+  (`hooks.rs`) sets the game's mouse from `user32::mouse_pos`; `window.rs` frame_pos clamped
+  it to the 640 columns, now to the picture's width (-side..640+side). The aim follows
+  (0x565b48 beyond +-1), the tank turns. The game's reticle is a HUD sprite (0x4ea0f4, drawn
+  by the sprites' draw 0x4b7790 as frame buffer pixels, cut to the 640 x 480 screen); 0x411300
+  places it (centre 0x4ea0dc/e0, half size 0x4ea0c4/c8). `reticle.rs` draws ours there
+  instead (made in Rust, sharp at any resolution, replaceable) with `glide::draw_image`, which
+  draws over the whole target (the view's viewport cut what lay beside it). Found by skipping
+  functions for a second each in a scripted run and looking at the screenshots.

@@ -10,6 +10,7 @@ mod draw;
 mod frames;
 mod hooks;
 mod pictures;
+mod reticle;
 mod wide;
 
 use recomp::smc::SmcSpec;
