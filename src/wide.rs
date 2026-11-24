@@ -16,9 +16,15 @@
 //! The HUD is pixels written to the frame buffer after the picture (grLfbLock), the static
 //! parts (its bars) only once: they stay in the frame. It is drawn unstretched in the frame's
 //! 4:3 middle (`View::Hud(0.5)`); beside its bars the frame stays black. Its marks are at the
-//! same angles, since the wide picture keeps the centre and the vertical scale. Open: the
-//! target zoom's 3D (drawn with the picture, clipped to the zoom's box at the lower left)
-//! lands in the wide picture's lower left, not in its box.
+//! same angles, since the wide picture keeps the centre and the vertical scale.
+//!
+//! The target zoom is no view of its own: while it is on (0x58298c), every polygon of the
+//! picture is drawn a second time, cut to a source rectangle around the aim (0x57b1b8) and
+//! moved in 2D into the zoom's box (x * [0x57b20c] + [0x57b214], y * [0x57b210] +
+//! [0x57b218]); 0x47a010 sets these from the source rectangle (fixed size, 640 x 480
+//! screen). In a wide picture the source rectangle is taken in the wide picture's columns
+//! (`x -> 320 + k (x - 320)`: the same piece of the world, narrower by k) and the box's x
+//! mapping goes into the frame's 4:3 middle (`X -> 320 (1 - k) + k X`), where the HUD's box is.
 //!
 //! On by default; REG_DWORD `Widescreen` 0 in the game's key turns it off.
 
@@ -54,7 +60,39 @@ pub fn hooks() -> Vec<(u32, Hook)> {
     vec![
         (PROJECTION.at(), projection),
         (FRAME_BEGIN.at(), frame_begin),
+        (ZOOM_SETUP.at(), zoom_setup),
     ]
+}
+
+/// fastcall(source rectangle: x0 y0 x1 y1 floats, flag): sets up the target zoom.
+const ZOOM_SETUP: Us = Us(0x47a010);
+/// The zoom's x mapping into its box: scale and offset.
+const ZOOM_SCALE_X: Us = Us(0x57b20c);
+const ZOOM_OFFSET_X: Us = Us(0x57b214);
+
+/// The target zoom in a wide picture: its source rectangle in the wide picture's columns,
+/// its box in the frame's 4:3 middle (see the head).
+fn zoom_setup(c: &mut Cpu) {
+    if !wide_now() {
+        return call_original(c, ZOOM_SETUP.at());
+    }
+    let m = mem();
+    let k = (4.0 / 3.0) / glide::frame_aspect();
+    let mid = SCREEN_W / 2.0;
+    let rect = c.r[ECX];
+    let xs = [rect, rect + 8];
+    let old = xs.map(|a| m.rd32(a));
+    for (a, v) in xs.into_iter().zip(old) {
+        m.wr32(a, (mid + k * (f32::from_bits(v) - mid)).to_bits());
+    }
+    call_original(c, ZOOM_SETUP.at());
+    for (a, v) in xs.into_iter().zip(old) {
+        m.wr32(a, v);
+    }
+    let scale = f32::from_bits(m.rd32(ZOOM_SCALE_X.at()));
+    let offset = f32::from_bits(m.rd32(ZOOM_OFFSET_X.at()));
+    m.wr32(ZOOM_SCALE_X.at(), (k * scale).to_bits());
+    m.wr32(ZOOM_OFFSET_X.at(), (k * offset + mid * (1.0 - k)).to_bits());
 }
 
 /// The frame being drawn is wide.

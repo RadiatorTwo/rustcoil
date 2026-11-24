@@ -21,3 +21,5 @@
 0x470440 mouse_read  DirectInput mouse GetDeviceState (DIMOUSESTATE at 0x565b18), then mouse_move
 0x470570 mouse_move  cursor [0x565b40],[0x565b44] += motion [0x565b50],[0x565b54] * sensitivity [0x4e48f4],[0x4e48f8]; clamped to [0x565b38]x[0x565b3c] while [0x565b6c] is 0
 0x46f710 keyboard_read  DirectInput keyboard buffered data (device [0x565b88], buffer [0x565b8c]), modifiers in [0x565b90]
+0x47a010 zoom_setup  fastcall(source rect x0 y0 x1 y1, flag): the target zoom's clip (0x57b1b8) and its 2D mapping into the box (0x57b20c..0x57b218)
+0x477bb0 draw_polys?  draws a mesh's polygons; with the zoom on (0x58298c) each a second time into the zoom's box

@@ -36,7 +36,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   Widescreen, open (the user's test, 2026-11-24):
   - [ ] aiming: the aim no longer matches where the projectiles go
   - [ ] the mouse stops where the old 4:3 picture's edge was
-  - [ ] the target zoom's 3D lands outside the HUD (at the wide picture's lower left)
+  - [x] the target zoom's 3D lands outside the HUD (at the wide picture's lower left)
   - [ ] resizing the window blacks out the HUD: it is not drawn again, only the parts that
     change (health bars)
 - [ ] gamepad
@@ -327,5 +327,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   them again with the wide angle and sets both flags after the picture.
   The HUD is LFB pixels after the picture, its bars written only once (they stay in the
   frame): clipping the 3D to the whole height painted over them, so beside the bars the
-  frame stays black. Open: the target zoom's 3D (in the same pass, clipped to its box at
-  the lower left) lands at the wide picture's lower left, not in its box.
+  frame stays black.
+  The target zoom (2026-11-24) is no view of its own (one projection call a picture): while
+  it is on (0x58298c) 0x477bb0 draws every polygon twice, the second time cut to a source
+  rectangle around the aim (clipper 0x57b1b8) and moved in 2D into the zoom's box (x scale
+  and offset 0x57b20c/0x57b214, y 0x57b210/0x57b218). 0x47a010 sets them from a fixed-size
+  source rectangle (caller 0x41174b). Wide: the hook takes that rectangle in the wide
+  picture's columns (320 + k (x - 320)) and maps the box into the frame's 4:3 middle
+  (scale k sx, offset k ox + 320 (1 - k)). Found by tracing the polygons below row 396:
+  one zoom polygon after each main one.
