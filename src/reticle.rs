@@ -20,6 +20,9 @@ const RETICLE: Us = Us(0x4ea0f4);
 /// Its centre and half size in screen pixels (ints).
 const CENTRE: [Us; 2] = [Us(0x4ea0dc), Us(0x4ea0e0)];
 const HALF: [Us; 2] = [Us(0x4ea0c4), Us(0x4ea0c8)];
+/// Points to a pointer to the 3D view's rectangle (left top right bottom, 0 26 640 396 in a
+/// mission), what the game cuts the reticle to (0x408630).
+const VIEW_RECT: Us = Us(0x4e9c44);
 
 pub fn hooks() -> Vec<(u32, Hook)> {
     vec![(SPRITE_DRAW.at(), sprite_draw)]
@@ -33,7 +36,11 @@ fn sprite_draw(c: &mut Cpu) {
     let [cx, cy] = CENTRE.map(|a| m.rd32(a.at()) as i32 as f32);
     let [hx, hy] = HALF.map(|a| m.rd32(a.at()) as i32 as f32);
     let r = hx.max(hy).max(4.0);
-    draw(cx, cy, r);
+    // cut to the view's rows as the game cuts it (not over the HUD's bars); its columns reach
+    // beside the 4:3 screen in a wide picture
+    let rect = m.rd32(m.rd32(VIEW_RECT.at()));
+    let rows = (m.rd32(rect + 4) as i32, m.rd32(rect + 12) as i32);
+    draw(cx, cy, r, rows);
     // return without the game's blit (thiscall, no arguments)
     c.r[ESP] += 4;
 }
@@ -41,15 +48,15 @@ fn sprite_draw(c: &mut Cpu) {
 /// The reticle's picture for a size in frame pixels (made once per size).
 static PICTURE: Mutex<Option<(u32, Vec<u8>)>> = Mutex::new(None);
 
-/// Our reticle centred at (cx, cy) with radius r (screen pixels).
-fn draw(cx: f32, cy: f32, r: f32) {
+/// Our reticle centred at (cx, cy) with radius r (screen pixels), cut to `rows`.
+fn draw(cx: f32, cy: f32, r: f32, rows: (i32, i32)) {
     let size = (2.0 * r * glide::frame_scale()).ceil().max(8.0) as u32;
     let mut pic = PICTURE.lock().unwrap();
     if pic.as_ref().is_none_or(|p| p.0 != size) {
         *pic = Some((size, picture(size, r)));
     }
     let (_, rgba) = pic.as_ref().unwrap();
-    glide::draw_image([cx - r, cy - r, 2.0 * r, 2.0 * r], (size, size), rgba);
+    glide::draw_image([cx - r, cy - r, 2.0 * r, 2.0 * r], (size, size), rgba, rows);
 }
 
 /// The reticle as RGBA, `size` pixels square, for a radius of `r` screen pixels (its strokes

@@ -2494,12 +2494,12 @@ pub fn set_space(space: Option<(u32, u32)>) {
 
 /// RGBA pixels (`w` x `h`, rows from the top) blended over the frame by their alpha, stretched
 /// over `rect` (x, y from the top, width, height in the game's screen pixels of the current
-/// view); beside the
-/// screen's columns too, where the frame is wider (widescreen: a mark beyond the 4:3 middle).
-pub fn draw_image(rect: [f32; 4], size: (u32, u32), rgba: &[u8]) {
+/// view), cut to the screen's `rows` (from, to); beside the screen's columns too, where the
+/// frame is wider (widescreen: a mark beyond the 4:3 middle).
+pub fn draw_image(rect: [f32; 4], size: (u32, u32), rgba: &[u8], (r0, r1): (i32, i32)) {
     with(|g, gl| {
-        let (w, h) = (g.res.0 as i32, g.res.1 as i32);
-        g.draw_image(gl, rect, size, rgba, [-4 * w, 0, 5 * w, h], true);
+        let w = g.res.0 as i32;
+        g.draw_image(gl, rect, size, rgba, [-4 * w, r0, 5 * w, r1], true);
     });
 }
 
