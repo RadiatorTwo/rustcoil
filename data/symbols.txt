@@ -23,3 +23,5 @@
 0x46f710 keyboard_read  DirectInput keyboard buffered data (device [0x565b88], buffer [0x565b8c]), modifiers in [0x565b90]
 0x47a010 zoom_setup  fastcall(source rect x0 y0 x1 y1, flag): the target zoom's clip (0x57b1b8) and its 2D mapping into the box (0x57b20c..0x57b218)
 0x477bb0 draw_polys?  draws a mesh's polygons; with the zoom on (0x58298c) each a second time into the zoom's box
+0x474c40 unproject?  screen points into directions with the projection's 0x56a720 (1 / (x scale x half width)); via 0x474ca0 from the aim (0x4113eb) and the hit tests (0x49aa80)
+0x474ba0 project?  directions into screen points (0x56a710: x scale x half width)

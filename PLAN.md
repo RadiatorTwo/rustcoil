@@ -34,7 +34,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [ ] high resolution, widescreen, settings (resolution: drawn at the window's size or
   `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; a settings menu: not yet)
   Widescreen, open (the user's test, 2026-11-24):
-  - [ ] aiming: the aim no longer matches where the projectiles go
+  - [x] aiming: the aim no longer matches where the projectiles go
   - [ ] the mouse stops where the old 4:3 picture's edge was
   - [x] the target zoom's 3D lands outside the HUD (at the wide picture's lower left)
   - [ ] resizing the window blacks out the HUD: it is not drawn again, only the parts that
@@ -336,3 +336,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   picture's columns (320 + k (x - 320)) and maps the box into the frame's 4:3 middle
   (scale k sx, offset k ox + 320 (1 - k)). Found by tracing the polygons below row 396:
   one zoom polygon after each main one.
+  Aiming (2026-11-24): the projection's x values (0x56a718, 0x56a6f8, 0x56a710, 0x56a720)
+  stayed wide after the picture; 0x474c40 turns screen points into directions with 0x56a720
+  (the aim 0x4113eb, the hit tests 0x49aa80), so shots went off the more to the side. They
+  are put back to the game's own after the picture (tested by hand: shots go to the mark).

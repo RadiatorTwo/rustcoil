@@ -15,8 +15,11 @@
 //!
 //! The HUD is pixels written to the frame buffer after the picture (grLfbLock), the static
 //! parts (its bars) only once: they stay in the frame. It is drawn unstretched in the frame's
-//! 4:3 middle (`View::Hud(0.5)`); beside its bars the frame stays black. Its marks are at the
-//! same angles, since the wide picture keeps the centre and the vertical scale.
+//! 4:3 middle (`View::Hud(0.5)`); beside its bars the frame stays black. After the picture
+//! the projection's x values are the game's own again (`put_back`): the HUD's marks, the aim
+//! and the hit tests turn 4:3 screen points into directions with them, and a point of the
+//! 4:3 middle lies over the same direction in the wide picture (it keeps the centre and the
+//! angle per pixel).
 //!
 //! The target zoom is no view of its own: while it is on (0x58298c), every polygon of the
 //! picture is drawn a second time, cut to a source rectangle around the aim (0x57b1b8) and
@@ -201,12 +204,37 @@ fn projection(c: &mut Cpu) {
         }
         let x_scale = f32::from_bits(m.rd32(at(4)));
         m.wr32(at(4), (x_scale * k).to_bits());
+        // the projection's x values as the game's own scale makes them, for after the picture
+        let one = f32::from_bits(m.rd32(PROJ_ONE.at()));
+        *NARROW.lock().unwrap() = Some([
+            x_scale,
+            one / x_scale,
+            x_scale * half_w,
+            one / (x_scale * half_w),
+        ]);
     }
     call_original(c, PROJECTION.at());
 }
 
-/// The camera's own field of view back (after the picture).
+/// The projection's values that depend on its x scale (written by 0x474480): the scale, its
+/// inverse, scale x half width and its inverse. The last is what screen points are turned
+/// back into directions with (0x474c40: the aim, 0x4113eb, and the hit tests, 0x49aa80):
+/// left wide after the picture, the shots went the further off the further to the side.
+const PROJ_X: [Us; 4] = [Us(0x56a718), Us(0x56a6f8), Us(0x56a710), Us(0x56a720)];
+/// The constant 0x474480 divides (1.0).
+const PROJ_ONE: Us = Us(0x4d6a24);
+
+/// The projection's x values for the game's own scale, put back after the picture.
+static NARROW: Mutex<Option<[f32; 4]>> = Mutex::new(None);
+
+/// The camera's own field of view and the projection's own x values back (after the picture).
 fn put_back() {
+    if let Some(values) = NARROW.lock().unwrap().take() {
+        let m = mem();
+        for (a, v) in PROJ_X.into_iter().zip(values) {
+            m.wr32(a.at(), v.to_bits());
+        }
+    }
     if let Some((cam, old)) = SAVED.lock().unwrap().take() {
         let m = mem();
         for (o, v) in WIDENED.into_iter().zip(old) {
