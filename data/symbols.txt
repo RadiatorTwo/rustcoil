@@ -27,3 +27,4 @@
 0x474ba0 project?  directions into screen points (0x56a710: x scale x half width)
 0x411300 reticle_place?  places the aiming reticle sprite 0x4ea0f4: centre 0x4ea0dc/0x4ea0e0, half size 0x4ea0c4/0x4ea0c8, cut to the screen
 0x4b7790 sprite_draw  thiscall: a HUD sprite's draw (blits its picture [+0x3c] at (+0x14, +0x18) into the frame buffer, 0x48f550)
+0x4b79c0 sprite_step  thiscall(time step): a HUD sprite's picture step; flags +0xc: 2 static (drawn when 4 or 8 asks), 0x10 hidden

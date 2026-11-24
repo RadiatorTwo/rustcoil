@@ -37,8 +37,10 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   - [x] aiming: the aim no longer matches where the projectiles go
   - [x] the mouse stops where the old 4:3 picture's edge was (our own reticle, `reticle.rs`)
   - [x] the target zoom's 3D lands outside the HUD (at the wide picture's lower left)
-  - [ ] resizing the window blacks out the HUD: it is not drawn again, only the parts that
-    change (health bars)
+  - [x] resizing the window blacks out the HUD: it is not drawn again, only the parts that
+    change (health bars) (`hud.rs`)
+  - [ ] effects (rare, hard to make) draw over the HUD's bars and stay there (the bars are
+    drawn once); idea: cut the 3D picture's effects to the view's rows 26..396 (0x4e9c44)
 - [ ] gamepad
 - [ ] release (tag `v*`)
 
@@ -349,3 +351,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   instead (made in Rust, sharp at any resolution, replaceable) with `glide::draw_image`, which
   draws over the whole target (the view's viewport cut what lay beside it). Found by skipping
   functions for a second each in a scripted run and looking at the screenshots.
+  HUD after a resize (2026-11-25): the HUD's sprites go through 0x4b79c0 each picture; flag 2
+  (+0xc) marks a static one, drawn only when flag 4 or 8 asks (one per buffer, cleared by the
+  draw). The frame made anew starts black, so `hud.rs` asks every static sprite once more
+  (4 | 8) after each new frame (`glide::targets_made`). Tested by hand: the HUD comes back.
+  A scripted resize (`size@` tried) did not change the render target here: its resolution is
+  fixed (Preferences), only an aspect change makes it anew.

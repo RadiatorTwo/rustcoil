@@ -9,6 +9,7 @@
 mod draw;
 mod frames;
 mod hooks;
+mod hud;
 mod pictures;
 mod reticle;
 mod wide;
