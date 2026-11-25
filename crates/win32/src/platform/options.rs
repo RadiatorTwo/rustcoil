@@ -446,7 +446,7 @@ impl Menu {
             let v = value_rect(rr);
             if let Kind::Bind(text, ..) = &r.kind {
                 if self.capture == Some(k) {
-                    cv.label(v, "Press a key...", MARK, 1, scale);
+                    cv.label(v, "Press...", MARK, 1, scale);
                 } else {
                     cv.label(v, &text(), TEXT, 1, scale);
                 }

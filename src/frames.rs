@@ -113,6 +113,7 @@ fn input(c: &mut Cpu) {
     if picture_now() {
         return skip(c, 0);
     }
+    crate::gamepad::step();
     call_original(c, INPUT.at());
 }
 

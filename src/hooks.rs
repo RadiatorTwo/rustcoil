@@ -95,7 +95,7 @@ fn mouse_move(c: &mut Cpu) {
     if !menu {
         return;
     }
-    let (x, y) = user32::mouse_pos();
+    let (x, y) = crate::gamepad::aim(user32::mouse_pos());
     m.wr32(MOUSE_X.at(), x as u32);
     m.wr32(MOUSE_Y.at(), y as u32);
     let rel = |p: i32, centre: Us, scale: Us| {

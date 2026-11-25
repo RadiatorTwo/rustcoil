@@ -36,8 +36,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   F10, 2026-11-25: the kit's `options.rs`, page Display in `main.rs`)
 - [x] settings menu, page Keys: the game's own bindings (`CmdMap`) changed in place
   (`src/controls.rs`, 2026-11-25)
-- [ ] settings menu: page Effects (with the first modern effect), page Gamepad (with the
-  gamepad)
+- [x] settings menu, page Gamepad (`src/gamepad.rs`, 2026-11-25); the pad works the menu
+- [ ] settings menu: page Effects (with the first modern effect)
   Widescreen, open (the user's test, 2026-11-24):
   - [x] aiming: the aim no longer matches where the projectiles go
   - [x] the mouse stops where the old 4:3 picture's edge was (our own reticle, `reticle.rs`)
@@ -47,7 +47,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   - [x] effects (rare, hard to make) draw over the HUD's bars and stay there (the bars are
     drawn once): the triangles cut to the view's rows while the views are drawn (`cut.rs`);
     not yet seen by hand
-- [ ] gamepad
+- [x] gamepad in missions (2026-11-25): buttons bound to the game's commands (`PadMap`),
+  left stick drives, right stick aims; not yet: the game's own menus by pad (`Game::menu`)
 - [ ] release (tag `v*`)
 
 ## Learned

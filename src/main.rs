@@ -10,6 +10,7 @@ mod controls;
 mod cut;
 mod draw;
 mod frames;
+mod gamepad;
 mod hooks;
 mod hud;
 mod pictures;
@@ -118,6 +119,10 @@ impl Game for MyGame {
             options::Page {
                 title: "Keys",
                 rows: controls::rows(),
+            },
+            options::Page {
+                title: "Gamepad",
+                rows: gamepad::rows(),
             },
         ]
     }

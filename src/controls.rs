@@ -21,7 +21,7 @@ const MODS: [(u32, &str); 3] = [(0x100, "Shift+"), (0x200, "Ctrl+"), (0x400, "Al
 
 /// The commands offered, by their number in the table, after the manual (the others are
 /// empty or the developers').
-const COMMANDS: &[(u32, &str)] = &[
+pub const COMMANDS: &[(u32, &str)] = &[
     (4, "Forward"),
     (1, "Backward"),
     (2, "Turn left"),
@@ -70,6 +70,11 @@ fn table() -> Option<(u32, u32)> {
     }
     let (n, at) = (m.rd32(obj + 4), m.rd32(obj + 8));
     (at != 0 && n > 0 && n < 256).then_some((at, n))
+}
+
+/// A command's binding as the game keeps it (0 before the game made its table).
+pub fn binding(cmd: u32) -> u32 {
+    get(cmd)
 }
 
 fn get(cmd: u32) -> u32 {

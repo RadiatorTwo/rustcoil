@@ -81,6 +81,13 @@ pub struct Pad {
     start: bool,
 }
 
+impl Pad {
+    /// The buttons held: bit n is our button n (`CONTROLS[n]`).
+    pub fn buttons(&self) -> u32 {
+        self.buttons
+    }
+}
+
 /// A connected pad: its state, the buttons pressed since the game last read it (a short press
 /// between two reads still counts: the Controller dialog reads every 250 ms), gilrs' id (None:
 /// the scripted pad), its name.
