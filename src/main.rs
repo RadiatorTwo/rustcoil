@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod controls;
 mod cut;
 mod draw;
 mod frames;
@@ -102,17 +103,23 @@ impl Game for MyGame {
     }
 
     fn options(&self) -> Vec<options::Page> {
-        vec![options::Page {
-            title: "Display",
-            rows: vec![
-                options::fullscreen(),
-                options::window_size(),
-                wide::option(),
-                options::anti_aliasing(),
-                options::textures(),
-                options::frame_rate_display(),
-            ],
-        }]
+        vec![
+            options::Page {
+                title: "Display",
+                rows: vec![
+                    options::fullscreen(),
+                    options::window_size(),
+                    wide::option(),
+                    options::anti_aliasing(),
+                    options::textures(),
+                    options::frame_rate_display(),
+                ],
+            },
+            options::Page {
+                title: "Keys",
+                rows: controls::rows(),
+            },
+        ]
     }
 }
 

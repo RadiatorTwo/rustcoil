@@ -34,8 +34,10 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [x] high resolution, widescreen, settings (resolution: drawn at the window's size or
   `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; the settings menu
   F10, 2026-11-25: the kit's `options.rs`, page Display in `main.rs`)
-- [ ] settings menu: page Effects (with the first modern effect), page Controls (our own
-  key and gamepad bindings, with the gamepad)
+- [x] settings menu, page Keys: the game's own bindings (`CmdMap`) changed in place
+  (`src/controls.rs`, 2026-11-25)
+- [ ] settings menu: page Effects (with the first modern effect), page Gamepad (with the
+  gamepad)
   Widescreen, open (the user's test, 2026-11-24):
   - [x] aiming: the aim no longer matches where the projectiles go
   - [x] the mouse stops where the old 4:3 picture's edge was (our own reticle, `reticle.rs`)
@@ -359,6 +361,16 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   +0x3c) by what the ray 0x444e30 meets: 0x4ea0e4 an object (red wedges), 0x4ea0ec a target
   (+0xbc set: green wedges), 0x4ea0e8 nothing (no wedges, red cross). Ours follows; found by
   logging the picture and cropping screenshots of the game's own sprite.
+- Key bindings (2026-11-25): `CmdMap` (REG_BINARY in HKCU\SOFTWARE\Zipper\RECOIL.0) is a
+  registry variable (0x4b6660, made by 0x470970): the table at [[0x569d60] + 8], 47 commands,
+  a dword each: two keys (11 bits: DIK, 0x100 Shift, 0x200 Ctrl, 0x400 Alt), a joystick button
+  (4 bits from 22), a mouse button (2 bits from 26). 0x470f30 (through 0x471850, fastcall
+  command) ORs their states; the keyboard read 0x46f710 keeps a state per DIK | modifiers at
+  0x565b94 + 8 * slot. Its editor was in the launcher. Numbers: 1 back, 2 left, 3 right,
+  4 forward, 5/6 sub up/down, 7 center turret, 8 center chassis, 9 turret lock, 10 reticle
+  steering, 11/12 fire (mouse 1/2, joystick 1/2), 13 detonate, 15-23 weapons 1-9, 24
+  objective, 25 review, 27-29 map, 30 view, 32 HUD, 33 cockpit, 34 resolution (F7), 37-40
+  track/amphib/hover/sub, 42 message, 44 load, 45 save.
   HUD after a resize (2026-11-25): the HUD's sprites go through 0x4b79c0 each picture; flag 2
   (+0xc) marks a static one, drawn only when flag 4 or 8 asks (one per buffer, cleared by the
   draw). The frame made anew starts black, so `hud.rs` asks every static sprite once more
