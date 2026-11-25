@@ -127,7 +127,10 @@ fn picture(size: u32, r: f32, look: Look) -> Vec<u8> {
             let cover = |d: f32| (0.5 - d / px).clamp(0.0, 1.0);
             // each pixel takes the colour of the shape covering it most
             let mut best = (RED, cover(ring));
-            for (rgb, d) in [(cross, cross_d)].into_iter().chain(wedges.map(|w| (w, wedge))) {
+            for (rgb, d) in [(cross, cross_d)]
+                .into_iter()
+                .chain(wedges.map(|w| (w, wedge)))
+            {
                 if cover(d) > best.1 {
                     best = (rgb, cover(d));
                 }

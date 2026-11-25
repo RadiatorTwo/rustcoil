@@ -31,8 +31,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [ ] speed (GUIDE 8a): ~400 to ~850 pictures a second unpaced in the first mission
   (2026-11-22); next: 0x487f90, 0x477bb0, 0x4b0370, 0x47f050 (~35 %, spread thin)
 - [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
-- [ ] high resolution, widescreen, settings (resolution: drawn at the window's size or
-  `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; a settings menu: not yet)
+- [x] high resolution, widescreen, settings (resolution: drawn at the window's size or
+  `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; the settings menu
+  F10, 2026-11-25: the kit's `options.rs`, page Display in `main.rs`)
+- [ ] settings menu: page Effects (with the first modern effect), page Controls (our own
+  key and gamepad bindings, with the gamepad)
   Widescreen, open (the user's test, 2026-11-24):
   - [x] aiming: the aim no longer matches where the projectiles go
   - [x] the mouse stops where the old 4:3 picture's edge was (our own reticle, `reticle.rs`)

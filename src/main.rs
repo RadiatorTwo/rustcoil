@@ -17,6 +17,7 @@ mod wide;
 
 use recomp::smc::SmcSpec;
 use recomp::ver::Version;
+use win32::platform::options;
 use win32::{Game, GlideExt, Identity};
 
 /// The versions of the game's EXE this port knows; the first is the reference version: every
@@ -98,6 +99,20 @@ impl Game for MyGame {
 
     fn on_start(&self) {
         recomp::image::set_symbols(include_str!("../data/symbols.txt"));
+    }
+
+    fn options(&self) -> Vec<options::Page> {
+        vec![options::Page {
+            title: "Display",
+            rows: vec![
+                options::fullscreen(),
+                options::window_size(),
+                wide::option(),
+                options::anti_aliasing(),
+                options::textures(),
+                options::frame_rate_display(),
+            ],
+        }]
     }
 }
 

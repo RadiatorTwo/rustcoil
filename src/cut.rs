@@ -31,10 +31,7 @@ const VIEW_RECT: Us = Us(0x4e9c44);
 static ROWS: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
 pub fn hooks() -> Vec<(u32, Hook)> {
-    vec![
-        (DRAW_POLYS.at(), draw_polys),
-        (CLIP_TEST.at(), clip_test),
-    ]
+    vec![(DRAW_POLYS.at(), draw_polys), (CLIP_TEST.at(), clip_test)]
 }
 
 /// The views begin: the triangles cut to the view's rows.

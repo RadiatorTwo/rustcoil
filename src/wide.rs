@@ -37,10 +37,20 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use win32::platform::glide::{self, View};
-use win32::platform::{guest_call, mem};
 use win32::platform::setting::Setting;
+use win32::platform::{guest_call, mem};
 
 static WIDE: Setting = Setting::new("Widescreen", "WIDE", true);
+
+/// The settings menu's row.
+pub fn option() -> win32::platform::options::Row {
+    win32::platform::options::Row::on_off(
+        "Widescreen",
+        "Missions as wide as the window, the HUD in the middle",
+        || WIDE.get(),
+        |on| WIDE.set(on),
+    )
+}
 
 /// stdcall(left, top, half width, half height, x scale, y scale, near, far): the projection.
 const PROJECTION: Us = Us(0x474480);
