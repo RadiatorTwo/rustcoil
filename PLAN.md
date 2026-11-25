@@ -1,7 +1,7 @@
 # PLAN — Recoil
 
 The way through: recomp_kit's docs/GUIDE.md. Tick off what is done, note what was learned.
-Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes went back into recomp_kit 1dbe3cf, the frame rate work (2026-11-22) into e5137f9, the speed work into 05224a2 and fbd499f, the missing imports (2026-11-23) into 74e63c5, glide::set_rows (2026-11-25) into ca39957.
+Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes went back into recomp_kit 1dbe3cf, the frame rate work (2026-11-22) into e5137f9, the speed work into 05224a2 and fbd499f, the missing imports (2026-11-23) into 74e63c5, glide::set_rows (2026-11-25) into ca39957, the settings menu into 1476b4c.
 
 ## 1. Start
 
