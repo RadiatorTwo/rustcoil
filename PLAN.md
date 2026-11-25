@@ -352,6 +352,10 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   instead (made in Rust, sharp at any resolution, replaceable) with `glide::draw_image`, which
   draws over the whole target (the view's viewport cut what lay beside it). Found by skipping
   functions for a second each in a scripted run and looking at the screenshots.
+  Its looks (2026-11-25): the aim 0x4113eb gives the sprite one of three pictures (0x4b7650,
+  +0x3c) by what the ray 0x444e30 meets: 0x4ea0e4 an object (red wedges), 0x4ea0ec a target
+  (+0xbc set: green wedges), 0x4ea0e8 nothing (no wedges, red cross). Ours follows; found by
+  logging the picture and cropping screenshots of the game's own sprite.
   HUD after a resize (2026-11-25): the HUD's sprites go through 0x4b79c0 each picture; flag 2
   (+0xc) marks a static one, drawn only when flag 4 or 8 asks (one per buffer, cleared by the
   draw). The frame made anew starts black, so `hud.rs` asks every static sprite once more
