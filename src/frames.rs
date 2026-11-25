@@ -103,7 +103,9 @@ fn logic(c: &mut Cpu) {
 fn render(c: &mut Cpu) {
     let alpha = CLOCK.alpha(PACER.next_shown());
     crate::wide::views_begin();
+    crate::cut::views_begin();
     crate::pictures::draw(alpha, || call_original(c, RENDER.at()));
+    crate::cut::views_end();
     crate::wide::views_end();
 }
 

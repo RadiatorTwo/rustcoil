@@ -39,8 +39,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   - [x] the target zoom's 3D lands outside the HUD (at the wide picture's lower left)
   - [x] resizing the window blacks out the HUD: it is not drawn again, only the parts that
     change (health bars) (`hud.rs`)
-  - [ ] effects (rare, hard to make) draw over the HUD's bars and stay there (the bars are
-    drawn once); idea: cut the 3D picture's effects to the view's rows 26..396 (0x4e9c44)
+  - [x] effects (rare, hard to make) draw over the HUD's bars and stay there (the bars are
+    drawn once): the triangles cut to the view's rows while the views are drawn (`cut.rs`);
+    not yet seen by hand
 - [ ] gamepad
 - [ ] release (tag `v*`)
 
@@ -357,3 +358,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   (4 | 8) after each new frame (`glide::targets_made`). Tested by hand: the HUD comes back.
   A scripted resize (`size@` tried) did not change the render target here: its resolution is
   fixed (Preferences), only an aspect change makes it anew.
+- Effects over the HUD's bars (2026-11-25): the game cuts its polygons to the view in software
+  (clipper 0x57b178 in 0x477bb0), but particles are points tested at their centre only
+  (0x57b19c..0x57b1a8) and drawn as squares ([0x56fb28]): one near the edge reaches over a bar,
+  which is never drawn again. `cut.rs` cuts Glide's triangles to the view's rows (0x4e9c44)
+  from world_draw's start to its end (`glide::set_rows`, a scissor besides the clip window).
+  The target zoom's second polygons go below the view into its box: the cut is off after the
+  zoom's clipper (0x480430 with 0x57b1b8) and on again after each mesh. Tested with
+  zoom.txt at 1280x720: the zoom box still shows its 3D.
