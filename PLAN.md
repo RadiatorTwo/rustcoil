@@ -48,7 +48,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
     drawn once): the triangles cut to the view's rows while the views are drawn (`cut.rs`);
     not yet seen by hand
 - [x] gamepad in missions (2026-11-25): buttons bound to the game's commands (`PadMap`),
-  left stick drives, right stick aims; not yet: the game's own menus by pad (`Game::menu`)
+  left stick drives, right stick aims; tested by hand 2026-11-26, the menus by pad too
 - [ ] release (tag `v*`)
 
 ## Learned
