@@ -8,26 +8,51 @@
 //! level adding the one below), and the largest level is added to the picture inside the box at
 //! low strength.
 //!
-//! No HDR target: the picture is 8 bits, so the threshold is below white. Setting `Bloom`
-//! (`options::bloom`, the settings menu).
+//! No HDR target: the picture is 8 bits, so the threshold is below white. Setting
+//! `BloomLevel` (0 off, 1 low, 2 medium, 3 high; `options::bloom`, the settings menu).
 
+use super::advapi32;
 use super::gl::compile;
-use super::setting::Setting;
 use glow::HasContext;
+use std::sync::atomic::{AtomicU8, Ordering::Relaxed};
 
-pub static BLOOM: Setting = Setting::new("Bloom", "BLOOM", true);
+/// The levels' names, and their threshold and strength (the first is off).
+pub const LEVEL_NAMES: [&str; 4] = ["Off", "Low", "Medium", "High"];
+const LEVEL_LOOKS: [(f32, f32); 4] = [(1.0, 0.0), (0.72, 0.35), (0.6, 0.8), (0.5, 1.3)];
+const DEFAULT_LEVEL: u8 = 2;
+
+/// The level; 255 not read yet.
+static LEVEL: AtomicU8 = AtomicU8::new(255);
+
+pub fn level() -> usize {
+    let l = LEVEL.load(Relaxed);
+    if l != 255 {
+        return l as usize;
+    }
+    let l = advapi32::value("", "BloomLevel")
+        .and_then(|(_, d)| d.first().copied())
+        .filter(|&v| (v as usize) < LEVEL_NAMES.len())
+        .unwrap_or(DEFAULT_LEVEL);
+    LEVEL.store(l, Relaxed);
+    l as usize
+}
+
+/// Saved, and used from the next picture on.
+pub fn set_level(l: usize) {
+    let l = l.min(LEVEL_NAMES.len() - 1) as u32;
+    LEVEL.store(l as u8, Relaxed);
+    advapi32::set_value("", "BloomLevel", 4, &l.to_le_bytes());
+}
 
 pub fn enabled() -> bool {
-    BLOOM.get()
+    level() != 0
 }
 
 /// Levels below the half-resolution one.
 const LEVELS: usize = 6;
-/// The brightness where the glow begins, and the knee's width around it.
-const THRESHOLD: f32 = 0.72;
+/// The knee's width around the brightness where the glow begins (the level's threshold; its
+/// strength: the glow's whole light when added, as a share of the bright part's).
 const KNEE: f32 = 0.2;
-/// The glow's strength when added (its whole light, as a share of the bright part's).
-const STRENGTH: f32 = 0.35;
 /// Each larger level counts this much more going up: the glow reaches farther around a
 /// bright thing instead of staying on it.
 const SPREAD: f32 = 1.45;
@@ -226,6 +251,7 @@ impl Bloom {
         let (w, h) = (target.0 as i32, target.1 as i32);
         let [x, y, cw, ch] = clip;
         let u = |p: glow::Program, n: &'static str| super::gl::uniform(gl, p, n);
+        let (threshold, strength) = LEVEL_LOOKS[level()];
         unsafe {
             gl.disable(glow::SCISSOR_TEST);
             gl.disable(glow::BLEND);
@@ -259,7 +285,7 @@ impl Bloom {
             gl.bind_texture(glow::TEXTURE_2D, Some(*copy));
             gl.uniform_1_i32(u(self.pre, "picture").as_ref(), 0);
             gl.uniform_2_i32(u(self.pre, "size").as_ref(), w, h);
-            gl.uniform_1_f32(u(self.pre, "threshold").as_ref(), THRESHOLD);
+            gl.uniform_1_f32(u(self.pre, "threshold").as_ref(), threshold);
             gl.uniform_1_f32(u(self.pre, "knee").as_ref(), KNEE);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
             gl.disable(glow::SCISSOR_TEST);
@@ -314,7 +340,7 @@ impl Bloom {
             // the levels' sum (weights SPREAD^k) brought back to one, times the strength
             let sum: f32 = (0..=LEVELS).map(|k| SPREAD.powi(k as i32)).sum();
             let k = (LEVELS + 1) as f32 / sum;
-            gl.uniform_1_f32(u(self.up, "strength").as_ref(), STRENGTH * k);
+            gl.uniform_1_f32(u(self.up, "strength").as_ref(), strength * k);
             // the picture's alpha left as it is
             gl.color_mask(true, true, true, false);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);

@@ -162,11 +162,14 @@ pub fn frame_rate_display() -> Row {
 
 /// The glow around bright things (`bloom.rs`; the game calls `glide::bloom`).
 pub fn bloom() -> Row {
-    Row::on_off(
+    Row::choice(
         "Bloom",
         "A soft glow around fire, explosions and shots",
-        || super::bloom::BLOOM.get(),
-        |on| super::bloom::BLOOM.set(on),
+        || {
+            let names = super::bloom::LEVEL_NAMES.iter().map(|n| n.to_string());
+            (names.collect(), super::bloom::level())
+        },
+        super::bloom::set_level,
     )
 }
 
