@@ -117,6 +117,10 @@ impl Game for MyGame {
                 ],
             },
             options::Page {
+                title: "Effects",
+                rows: vec![options::bloom()],
+            },
+            options::Page {
                 title: "Keys",
                 rows: controls::rows(),
             },

@@ -89,7 +89,12 @@ const LFB_BAND_GAP: u32 = 8;
 /// The pixels of a locked buffer's row (16 bits each) the game wrote: from the first to past
 /// the last, or None. Compared four at a time.
 fn touched(row: &[u8]) -> Option<(usize, usize)> {
-    let four = u64::from_ne_bytes([LFB_UNTOUCHED.to_le_bytes(); 4].concat().try_into().unwrap());
+    let four = u64::from_ne_bytes(
+        [LFB_UNTOUCHED.to_le_bytes(); 4]
+            .concat()
+            .try_into()
+            .unwrap(),
+    );
     let differs = |c: &[u8]| u64::from_ne_bytes(c.try_into().unwrap()) != four;
     let px = |x: &usize| u16::from_le_bytes([row[2 * x], row[2 * x + 1]]) != LFB_UNTOUCHED;
     let n = row.len() / 2;
@@ -297,6 +302,8 @@ struct Glide {
     lfb_rgba: Vec<u8>,
     /// drawing LFB pixels over the picture: a program and a texture
     blit: (glow::Program, glow::Texture),
+    /// the glow's passes, once used (`bloom`)
+    bloom: Option<super::bloom::Bloom>,
 }
 
 /// Glide's state, global: a game may draw from more than one thread (Nuclear Strike: its game
@@ -1054,6 +1061,7 @@ impl Glide {
                 lfb: None,
                 lfb_rgba: Vec::new(),
                 blit,
+                bloom: None,
             }
         }
     }
@@ -1751,7 +1759,10 @@ impl Glide {
         if write {
             let untouched = LFB_UNTOUCHED.to_le_bytes();
             for y in 0..h {
-                for p in m.slice(buf + y * LFB_STRIDE, 2 * w as usize).chunks_exact_mut(2) {
+                for p in m
+                    .slice(buf + y * LFB_STRIDE, 2 * w as usize)
+                    .chunks_exact_mut(2)
+                {
                     p.copy_from_slice(&untouched);
                 }
             }
@@ -2190,6 +2201,9 @@ fn sst_win_close(_: &mut Cpu) -> u32 {
         }
         gl.delete_renderbuffer(g.depth_rb);
         gl.delete_program(g.blit.0);
+        if let Some(mut b) = g.bloom.take() {
+            b.delete(gl);
+        }
         gl.delete_texture(g.blit.1);
         gl.delete_texture(g.color);
         gl.delete_texture(g.array);
@@ -2542,6 +2556,37 @@ pub fn set_rows(rows: Option<(i32, i32)>) {
             g.flush(gl);
             g.rows = rows;
         }
+    });
+}
+
+/// The 3D views are drawn (before the HUD): the glow over them (`bloom.rs`), when it is on,
+/// inside the rows (screen pixels from the top, from..to), as wide as the view goes.
+pub fn bloom(rows: (i32, i32)) {
+    if !super::bloom::enabled() {
+        return;
+    }
+    with(|g, gl| {
+        g.flush(gl);
+        let ([_, vy, _, vh], (cut0, cut1)) = g.view_rect();
+        let th = g.target.1 as f32;
+        let sy = vh / g.res.1 as f32;
+        let y0 = (vy + rows.0 as f32 * sy).round().max(0.0);
+        let y1 = (vy + rows.1 as f32 * sy).round().min(th);
+        let (x0, x1) = (cut0.round(), cut1.round());
+        if y1 <= y0 || x1 <= x0 {
+            return;
+        }
+        let clip = [
+            x0 as i32,
+            (th - y1) as i32,
+            (x1 - x0) as i32,
+            (y1 - y0) as i32,
+        ];
+        let out = g.draw_fbo(gl);
+        let target = g.target;
+        g.bloom
+            .get_or_insert_with(|| super::bloom::Bloom::new(gl))
+            .run(gl, out, target, clip);
     });
 }
 

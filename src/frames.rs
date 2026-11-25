@@ -105,6 +105,7 @@ fn render(c: &mut Cpu) {
     crate::wide::views_begin();
     crate::cut::views_begin();
     crate::pictures::draw(alpha, || call_original(c, RENDER.at()));
+    crate::cut::bloom();
     crate::cut::views_end();
     crate::wide::views_end();
 }

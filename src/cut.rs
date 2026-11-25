@@ -47,6 +47,13 @@ pub fn views_begin() {
     glide::set_rows(Some(rows));
 }
 
+/// The views are drawn: the glow over them (before the HUD, which it leaves).
+pub fn bloom() {
+    if let Some(rows) = *ROWS.lock().unwrap() {
+        glide::bloom(rows);
+    }
+}
+
 /// The views are drawn: the HUD is not cut.
 pub fn views_end() {
     *ROWS.lock().unwrap() = None;

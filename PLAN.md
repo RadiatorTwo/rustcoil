@@ -37,7 +37,9 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [x] settings menu, page Keys: the game's own bindings (`CmdMap`) changed in place
   (`src/controls.rs`, 2026-11-25)
 - [x] settings menu, page Gamepad (`src/gamepad.rs`, 2026-11-25); the pad works the menu
-- [ ] settings menu: page Effects (with the first modern effect)
+- [x] settings menu: page Effects, first effect bloom (2026-11-26: the kit's `bloom.rs`, after
+  nuclear_rust_strike's, without its depth mask; `glide::bloom` from `cut::bloom` once the
+  views are drawn, before the HUD, inside the view's rows); not yet seen by hand
   Widescreen, open (the user's test, 2026-11-24):
   - [x] aiming: the aim no longer matches where the projectiles go
   - [x] the mouse stops where the old 4:3 picture's edge was (our own reticle, `reticle.rs`)
