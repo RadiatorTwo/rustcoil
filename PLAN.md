@@ -434,3 +434,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   list's front first. Also the dry run (crates) collected the lights a second time: `render`
   puts their count back after it. Checked with the user's recording `kran.txt`: the glow is
   in all 230 pictures while firing (before: gone in about half).
+- Open (2026-11-26, the user): the tank's light dust streaks lie about 23 % too close together
+  for its tracks. Measured on the user's mark in `spur.txt` (perspective taken out). The tank's
+  ground contact points (`support00`..`03`, copied by 0x422140 to the vehicle data +0x1b4, 12
+  bytes each; x -1.60, 2.18, 1.60, -1.60) lie inward of the tracks (about +-2.08: tracks 1.5
+  wide, chassis +-2.83); 1.6 / 2.08 = 0.77 fits. The physics 0x428db0 turns them into world
+  points ([object+8]: count +8, points from +0xc). The model has no `dust_l` / `dust_r`
+  (0x4214c0 finds none). The dust is drawn as sorted transparent polygons (0x4b13b0, after the
+  world). Not found yet: the code that places the dust. Widening the contact points would
+  change the physics, so the fix belongs at the dust only.
