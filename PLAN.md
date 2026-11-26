@@ -455,3 +455,12 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   command's y offset (0.2 above the joint, 0.55 above the tracks' bottom) is now the joint's
   box bottom + 0.05 (`trails::GROUND_LIFT`), with the Exhaust trail fix. Checked in `spur.txt`:
   the streaks start on the ground at the tracks' bottom.
+- Bloom only around effects (2026-11-26, the user: explosions, shots, fire; bright sky and
+  sand glowed too). Recoil draws nothing additive: only opaque (4, 0) and SRC_ALPHA /
+  1 - SRC_ALPHA (1, 5). Its effects are the blended primitives that write no depth: hidden in
+  a test (the lighthouse's glow, the shots, the muzzle flash, the sparks went, nothing else).
+  So glide draws a second attachment beside the colour, the glow mask (R8; with MSAA a
+  multisampled renderbuffer resolved before the bloom): such a primitive writes its alpha,
+  any other 0, blended like the colour (what is drawn in front covers it); cleared with the
+  colour (grBufferClear). The bloom's first pass weighs the bright part by the mask. Checked
+  in `kran.txt` (the glows and shots still glow) and `spur.txt` (the sand no longer hazy).

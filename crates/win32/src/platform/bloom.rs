@@ -4,7 +4,9 @@
 //! A game calls `glide::bloom` once its 3D views are drawn and before its HUD (so the HUD is
 //! not bloomed), with the box the views fill. The picture there is copied (resolved with
 //! MSAA); a first pass takes its bright part at half resolution (a soft threshold on the
-//! brightness), then a chain of smaller levels (13-tap filter down), back up (tent filter, each
+//! brightness) where glide's glow mask says a glowing effect was drawn (blended, no depth
+//! written: fire, explosions, shots, lights' glows; bright sky, sand or walls do not glow),
+//! then a chain of smaller levels (13-tap filter down), back up (tent filter, each
 //! level adding the one below), and the largest level is added to the picture inside the box at
 //! low strength.
 //!
@@ -67,6 +69,7 @@ void main() {
 
 const PRE_FS: &str = r#"
 uniform sampler2D picture;
+uniform sampler2D mask;     // glide's glow mask: 1 where a glowing effect covers the pixel
 uniform ivec2 size;
 uniform float threshold;
 uniform float knee;
@@ -86,7 +89,7 @@ void main() {
         vec3 c = texelFetch(picture, p, 0).rgb;
         // weighted by 1 / (1 + brightness): one bright pixel does not flicker as a blob
         float w = 1.0 / (1.0 + max(c.r, max(c.g, c.b)));
-        sum += c * bright(c) * w;
+        sum += c * bright(c) * w * texelFetch(mask, p, 0).r;
     }
     o = vec4(sum * 0.25 * 2.0, 1.0);
 }
@@ -236,11 +239,12 @@ impl Bloom {
     }
 
     /// The glow over the picture in `out` (`target` its size) inside `clip` (x y w h, GL's:
-    /// from the lower left).
+    /// from the lower left), where `mask` (R8, the target's size) is set.
     pub fn run(
         &mut self,
         gl: &glow::Context,
         out: glow::Framebuffer,
+        mask: glow::Texture,
         target: (u32, u32),
         clip: [i32; 4],
     ) {
@@ -281,9 +285,12 @@ impl Bloom {
             gl.enable(glow::SCISSOR_TEST);
             gl.scissor(x / 2, y / 2, cw / 2, ch / 2);
             gl.use_program(Some(self.pre));
+            gl.active_texture(glow::TEXTURE1);
+            gl.bind_texture(glow::TEXTURE_2D, Some(mask));
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(glow::TEXTURE_2D, Some(*copy));
             gl.uniform_1_i32(u(self.pre, "picture").as_ref(), 0);
+            gl.uniform_1_i32(u(self.pre, "mask").as_ref(), 1);
             gl.uniform_2_i32(u(self.pre, "size").as_ref(), w, h);
             gl.uniform_1_f32(u(self.pre, "threshold").as_ref(), threshold);
             gl.uniform_1_f32(u(self.pre, "knee").as_ref(), KNEE);
@@ -348,6 +355,10 @@ impl Bloom {
             gl.disable(glow::SCISSOR_TEST);
             gl.disable(glow::BLEND);
             gl.bind_texture(glow::TEXTURE_2D, None);
+            // the mask is drawn into again: not left bound
+            gl.active_texture(glow::TEXTURE1);
+            gl.bind_texture(glow::TEXTURE_2D, None);
+            gl.active_texture(glow::TEXTURE0);
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
         }
     }
