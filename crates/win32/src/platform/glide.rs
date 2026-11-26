@@ -2466,7 +2466,24 @@ fn lfb_read_region(c: &mut Cpu) -> u32 {
 }
 
 /// grDrawPolygonVertexList(n, GrVertex[n]): a convex polygon, as a fan of triangles.
+/// A dry run of the game's drawing (`set_dry`): its triangles, lines and points are dropped.
+static DRY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// While on, nothing the game draws is drawn: the game's drawing runs for what it works out on
+/// the way (Recoil's bounding spheres the logic tests collisions with, from where the objects
+/// are rather than where a picture between logic frames shows them).
+pub fn set_dry(on: bool) {
+    DRY.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn dry() -> bool {
+    DRY.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 fn draw_polygon_vertex_list(c: &mut Cpu) -> u32 {
+    if dry() {
+        return 0;
+    }
     let (n, list) = (arg(c, 0), arg(c, 1));
     // GrVertex: x y z r g b ooz a oow, two TMUs' sow tow oow
     let v = |k: u32| list + 0x3c * k;
@@ -2601,18 +2618,27 @@ pub fn set_view(view: View) {
 }
 
 fn draw_triangle(c: &mut Cpu) -> u32 {
+    if dry() {
+        return 0;
+    }
     let v = [arg(c, 0), arg(c, 1), arg(c, 2)];
     with(|g, gl| g.add(gl, glow::TRIANGLES, &v));
     0
 }
 
 fn draw_line(c: &mut Cpu) -> u32 {
+    if dry() {
+        return 0;
+    }
     let v = [arg(c, 0), arg(c, 1)];
     with(|g, gl| g.add(gl, glow::TRIANGLES, &v));
     0
 }
 
 fn draw_point(c: &mut Cpu) -> u32 {
+    if dry() {
+        return 0;
+    }
     let v = [arg(c, 0)];
     with(|g, gl| g.add(gl, glow::POINTS, &v));
     0

@@ -29,6 +29,13 @@
 //! After each logic frame (`noted`) these values are noted; a picture shows them a frame late,
 //! at `alpha` of the way from the last frame's to the newest (`draw`), and puts the newest
 //! back after. Something that jumps (respawn, a camera cut) is not interpolated.
+//!
+//! The drawing also works out things for the logic from what it draws, for the nodes the
+//! logic marked changed (their bounding spheres, which collisions are tested with, and more).
+//! Worked out from the places a picture shows (behind), a falling crate (the crane's, the
+//! supply plane's) met the ground too late from 120 pictures a second on: it did not burst
+//! and sank through. So a logic frame's picture first runs the drawing dry at the newest
+//! places (`frames::render`).
 
 use std::collections::HashMap;
 use std::sync::Mutex;

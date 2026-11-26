@@ -15,7 +15,7 @@
 use recomp::rt::{Cpu, EAX, ECX, ESP, Hook, call_original};
 use recomp::ver::Us;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use win32::GlideExt;
 use win32::platform::tween::{LogicClock, Pacer};
@@ -27,10 +27,50 @@ pub const LOGIC_FPS: u32 = 60;
 /// Pictures a second when the display's refresh rate is unknown.
 const DEFAULT_FPS: f64 = 60.0;
 
-/// The most pictures a second: what the game reaches with room to spare (~400 at most in a
-/// mission on a fast computer, 2026). A faster display gets a picture every second (third...)
-/// refresh.
-const MAX_FPS: f64 = 240.0;
+/// The most pictures a second, the player's choice (setting `MaxFps`, the menu's Display
+/// page); `UNLIMITED` (0): as fast as the game draws them, vsync off. 240 is what the game
+/// reaches with room to spare (~400 at most in a mission on a fast computer, 2026). A faster
+/// display gets a picture every second (third...) refresh.
+const FPS_CHOICES: [u32; 6] = [60, 120, 144, 240, 480, UNLIMITED];
+const UNLIMITED: u32 = 0;
+const DEFAULT_MAX_FPS: u32 = 240;
+
+/// The chosen most pictures a second; `u32::MAX` not read yet.
+static MAX_FPS: AtomicU32 = AtomicU32::new(u32::MAX);
+
+fn max_fps() -> f64 {
+    let mut f = MAX_FPS.load(Ordering::Relaxed);
+    if f == u32::MAX {
+        f = win32::platform::advapi32::value("", "MaxFps")
+            .and_then(|(_, d)| Some(u32::from_le_bytes(d.get(..4)?.try_into().ok()?)))
+            .filter(|f| FPS_CHOICES.contains(f))
+            .unwrap_or(DEFAULT_MAX_FPS);
+        MAX_FPS.store(f, Ordering::Relaxed);
+    }
+    f as f64
+}
+
+/// The menu's row for the most pictures a second.
+pub fn option() -> win32::platform::options::Row {
+    win32::platform::options::Row::choice(
+        "Frame rate limit",
+        "The most pictures a second (the game's logic runs at 60 either way)",
+        || {
+            let cur = max_fps() as u32;
+            let k = FPS_CHOICES.iter().position(|&f| f == cur).unwrap_or(0);
+            let text = |&f: &u32| match f {
+                UNLIMITED => "Unlimited".to_string(),
+                f => f.to_string(),
+            };
+            (FPS_CHOICES.iter().map(text).collect(), k)
+        },
+        |k| {
+            let f = FPS_CHOICES[k.min(FPS_CHOICES.len() - 1)];
+            MAX_FPS.store(f, Ordering::Relaxed);
+            win32::platform::advapi32::set_value("", "MaxFps", 4, &f.to_le_bytes());
+        },
+    )
+}
 
 /// The game's clock: real time since the last call into `NOW`/`LAST`, the time step (times
 /// `SCALE`, which it sets back to 1, at most `MAX_STEP` while `CLAMP`) into `STEP` and
@@ -99,9 +139,19 @@ fn logic(c: &mut Cpu) {
 }
 
 /// Every picture (the logic frame's own too) shows the game a frame late, where it is when the
-/// picture is shown.
+/// picture is shown. A logic frame's picture first runs the drawing dry where things are now:
+/// what it works out for the logic it works out from there (`pictures`, head).
 fn render(c: &mut Cpu) {
     let alpha = CLOCK.alpha(PACER.next_shown());
+    if !picture_now() && alpha.is_some_and(|a| a < 256) {
+        let saved = win32::platform::tween::save(c);
+        win32::platform::glide::set_dry(true);
+        crate::wide::views_begin();
+        call_original(c, RENDER.at());
+        crate::wide::views_end();
+        win32::platform::glide::set_dry(false);
+        win32::platform::tween::restore(c, &saved);
+    }
     crate::wide::views_begin();
     crate::cut::views_begin();
     crate::pictures::draw(alpha, || call_original(c, RENDER.at()));
@@ -134,12 +184,15 @@ fn key_state(c: &mut Cpu) {
     call_original(c, KEY_STATE.at());
 }
 
-/// A picture: the mission's frame again, with the time step 0 (the HUD's animations go on
-/// with the logic).
+/// A picture: the mission's frame again, with both time steps 0 (the HUD's animations go on
+/// with the logic). The unscaled step too: after drawing, every picture runs 0x411070, which
+/// moves several systems on by it (it was not why crates sank: `render`).
 fn picture(c: &mut Cpu, this: u32, arg: u32) {
     let saved = win32::platform::tween::save(c);
     let step = mem().rd32(STEP.at());
+    let raw = mem().rd32(RAW_STEP.at());
     mem().wr32(STEP.at(), 0);
+    mem().wr32(RAW_STEP.at(), 0);
     PICTURE.store(true, Ordering::Relaxed);
     hold_turn(true);
     c.r[ECX] = this;
@@ -147,6 +200,7 @@ fn picture(c: &mut Cpu, this: u32, arg: u32) {
     hold_turn(false);
     PICTURE.store(false, Ordering::Relaxed);
     mem().wr32(STEP.at(), step);
+    mem().wr32(RAW_STEP.at(), raw);
     win32::platform::tween::restore(c, &saved);
 }
 
@@ -156,7 +210,7 @@ static PACER: Pacer = Pacer::new();
 static LAST: Mutex<u64> = Mutex::new(0);
 
 /// The pictures' pace: a picture each refresh of the display (each second, third... above
-/// `MAX_FPS`), kept to the display's refreshes (`refresh`, `Pacer::pace_on`), else
+/// `max_fps`), kept to the display's refreshes (`refresh`, `Pacer::pace_on`), else
 /// `DEFAULT_FPS`. Vsync on (no tearing in fullscreen).
 ///
 /// Not by the swap alone: in a window it returns at once (no wait for the refresh). Not by our
@@ -170,16 +224,34 @@ struct Pace {
     refresh: Option<(std::time::Instant, Duration)>,
 }
 
-/// `RUSTCOIL_UNPACED=1` (to measure): pictures as fast as the game draws them, vsync off.
+/// Pictures as fast as the game draws them, vsync off: the limit `UNLIMITED`, or
+/// `RUSTCOIL_UNPACED=1` (to measure).
 fn unpaced() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| recomp::config::env_on("UNPACED"))
+    *ON.get_or_init(|| recomp::config::env_on("UNPACED")) || max_fps() == UNLIMITED as f64
+}
+
+/// From this limit on, pictures are paced by our clock alone, vsync off. With vsync a picture
+/// must be done within a refresh (2.08 ms at 480 Hz); one a little late (the game takes 2 to 3
+/// ms a picture, more in a logic frame's) waited for the next, and 480 gave ~200 a second
+/// (the user, 2026-11-26: not over 240; Unlimited over 500).
+const OWN_PACE_FROM: f64 = 480.0;
+
+/// The swap waits for the display's refresh (vsync).
+fn vsync() -> bool {
+    !unpaced() && max_fps() < OWN_PACE_FROM
 }
 
 fn pace() -> Pace {
     if unpaced() {
         return Pace {
             period: Duration::ZERO,
+            refresh: None,
+        };
+    }
+    if !vsync() {
+        return Pace {
+            period: Duration::from_secs_f64(1.0 / max_fps()),
             refresh: None,
         };
     }
@@ -190,7 +262,7 @@ fn pace() -> Pace {
     };
     let period = match hz {
         // (480.001 Hz is two refreshes a picture at 240, not three)
-        Some(hz) => (hz / MAX_FPS - 0.01).ceil().max(1.0) / hz,
+        Some(hz) => (hz / max_fps() - 0.01).ceil().max(1.0) / hz,
         None => 1.0 / DEFAULT_FPS,
     };
     Pace {
@@ -214,6 +286,7 @@ pub fn game_clock(c: &mut Cpu) {
         return skip(c, c.r[EAX]);
     }
     if ret != MISSION_CALL.at() {
+        win32::platform::record::real_time();
         CLOCK.reset();
         crate::pictures::forget();
         call_original(c, GAME_CLOCK.at());
@@ -225,6 +298,8 @@ pub fn game_clock(c: &mut Cpu) {
     let (this, arg) = (c.r[ECX], mem().rd32(c.r[ESP] + 0x20));
     let (n, _) = CLOCK.frame(|| picture(c, this, arg), &PACER, pace().period);
     let frames = std::mem::replace(&mut *LAST.lock().unwrap(), n);
+    // recordings and replays count the mission's input in logic frames
+    win32::platform::record::logic_frames(if n == 0 { 0 } else { n - frames }, LOGIC_FPS);
     call_original(c, GAME_CLOCK.at());
     if n == 0 {
         // the first frame of a mission: the real step since the last call, as the game had it
@@ -253,7 +328,7 @@ impl GlideExt for Frames {
 
     fn before_shown(&self) {
         let p = pace();
-        win32::platform::gl::set_vsync(!unpaced());
+        win32::platform::gl::set_vsync(vsync());
         without_turn(|| PACER.pace_on(p.period, p.refresh));
     }
 }

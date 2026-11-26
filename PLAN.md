@@ -398,3 +398,28 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   The target zoom's second polygons go below the view into its box: the cut is off after the
   zoom's clipper (0x480430 with 0x57b1b8) and on again after each mesh. Tested with
   zoom.txt at 1280x720: the zoom box still shows its 3D.
+- Crates sank through the ground from 120 pictures a second (2026-11-26, the user: the crane's
+  crate and the supply plane's drops; fine at 60). At 60 the crate bursts on the ground and
+  leaves a repair pickup, above it landed, did not burst and sank. Not the time steps (the
+  unscaled step `[0x56f2ec]` is now 0 in pictures too, it did not help) and none of the
+  mission frame's other calls (left out of the pictures one by one: no change). Drawing the
+  newest places (no interpolation) fixed it: the drawing works out things for the logic from
+  what it draws for nodes the logic marked changed (node+0x64: bounding sphere centre and
+  radius, and more), and in the logic frame's picture it drew the places behind. Moving the
+  sphere alone after the picture was not enough. Now a logic frame's picture first runs the
+  drawing dry at the newest places (`glide::set_dry`: triangles, lines and points dropped),
+  then the picture as before. Checked with the user's recording at 240: the crate bursts.
+- Recordings replay exactly (2026-11-26): items were at real ms, a mission's logic at 60
+  frames a second, and loading takes its own time: a replay went off course in seconds. Now
+  the input clock (`record::input_ms`) counts a mission's logic frames (`record::logic_frames`
+  from `frames::game_clock`), each entry into a mission is a `sync` item a replay waits for,
+  the mouse's raw motion is recorded (`motion@dx,dy`: DirectInput's mouse, not the cursor),
+  and while recording or replaying the logic clock leaves no frame out (it slows down
+  instead). Two replays with 10 and 2 screenshots a second end in the same picture.
+  Screenshots are written on a thread of their own (`<PREFIX>_SHOT_MS` sets their interval).
+- Frame rate limit (2026-11-26): settings menu, Display page (`frames::option`, registry
+  `MaxFps`: 60, 120, 144, 240, 480, 0 for unlimited: vsync off, as `UNPACED`).
+  From 480 on our clock paces the pictures with vsync off (`OWN_PACE_FROM`): with vsync a
+  picture must be done within a refresh (2.08 ms at 480 Hz), a late one waited for the next,
+  and 480 gave ~200 a second. Now 480 gives what Unlimited gives where the game cannot draw
+  faster (~300 in the replay `kiste3` at the crane, the dry run included).

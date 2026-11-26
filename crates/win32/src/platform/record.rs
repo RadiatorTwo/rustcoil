@@ -2,10 +2,18 @@
 //! line, to be played again with `<PREFIX>_INPUT=@file.txt` (as rustschweine's HOGS_RECORD and
 //! rust_metal's GUNMETAL_RECORD).
 //!
-//! Items are at ms since the game's start, as <PREFIX>_INPUT counts them. Recorded: keys with how
+//! Items are at ms of the input clock (`input_ms`), as <PREFIX>_INPUT counts them: real time
+//! since the game's start, but in a game's fixed logic frames (`logic_frames`) exactly the
+//! frames' time, and every entry into them is a `sync` item: a replay waits there for the game
+//! to get there too and goes on from the item's time. So the logic gets each input in the same
+//! frame as when it was recorded, however long loading takes. (Before, at real ms, a replay
+//! went off course within seconds of a mission.)
+//!
+//! Recorded: keys with how
 //! long they were held (`Up*1500`), mouse buttons with where and how long (`click@x,y*n`,
-//! `rclick`, `mclick`, `x1click`, `x2click`), the mouse's moves at most every 50 ms
-//! (`move@x,y`), the wheel (`wheel@n`), typed characters (`text@c`, `char@hex`), the window's
+//! `rclick`, `mclick`, `x1click`, `x2click`), the mouse's moves (`move@x,y`, the last of each
+//! ms) and its raw motion, what DirectInput's mouse gets (`motion@dx,dy`, summed over each ms:
+//! the cursor's moves are not it, at the window's edges or while the cursor is caught), the wheel (`wheel@n`), typed characters (`text@c`, `char@hex`), the window's
 //! focus and its close button, and the first real gamepad (`pad@A*n`, `pad@LX=0.5*n`: its
 //! buttons and its sticks in steps of 0.05; a replay plays it on the scripted pad, which player 1
 //! uses). Repeats of a held key are not written (the hold is).
@@ -26,9 +34,11 @@ const PAD_CONTROLS: usize = 20;
 pub struct Recorder {
     /// keys and mouse buttons held: their item (without its hold) and since when
     held: Vec<(String, u64)>,
-    /// the mouse in frame pixels, and the last move written: when, where
+    /// the mouse in frame pixels, and a move not written yet (when, where): the last of its ms
     mouse: (i32, i32),
     moved: Option<(u64, i32, i32)>,
+    /// raw motion not written yet: its ms and the sum
+    motion: Option<(u64, i32, i32)>,
     /// the pad's controls as last seen, and since when (a value of 0 is not held)
     pad: [(f32, u64); PAD_CONTROLS],
 }
@@ -37,17 +47,16 @@ impl Recorder {
     /// The lines for one input event at `t` (ms since start).
     pub fn event(&mut self, i: &Input, t: u64) -> Vec<String> {
         let mut out = Vec::new();
-        match *i {
-            Input::Move(x, y) => {
-                self.mouse = (x, y);
-                if self
-                    .moved
-                    .is_none_or(|(m, mx, my)| t >= m + 50 && (mx, my) != (x, y))
-                {
-                    self.moved = Some((t, x, y));
-                    out.push(format!("{t}:move@{x},{y}"));
-                }
+        if let Input::Move(x, y) = *i {
+            if self.moved.is_some_and(|(m, ..)| m != t) {
+                self.flush_move(&mut out);
             }
+            self.mouse = (x, y);
+            self.moved = Some((t, x, y));
+            return out;
+        }
+        self.flush_move(&mut out);
+        match *i {
             Input::Key {
                 vk,
                 scan,
@@ -91,6 +100,40 @@ impl Recorder {
             }
             _ => {}
         }
+        out
+    }
+
+    /// The move and motion not written yet.
+    fn flush_move(&mut self, out: &mut Vec<String>) {
+        if let Some((t, x, y)) = self.moved.take() {
+            out.push(format!("{t}:move@{x},{y}"));
+        }
+        if let Some((t, dx, dy)) = self.motion.take() {
+            out.push(format!("{t}:motion@{dx},{dy}"));
+        }
+    }
+
+    /// The mouse's raw motion at `t` (DirectInput's).
+    pub fn motion(&mut self, dx: i32, dy: i32, t: u64) -> Vec<String> {
+        let mut out = Vec::new();
+        match self.motion.as_mut() {
+            Some((m, x, y)) if *m == t => {
+                *x += dx;
+                *y += dy;
+            }
+            _ => {
+                self.flush_move(&mut out);
+                self.motion = Some((t, dx, dy));
+            }
+        }
+        out
+    }
+
+    /// The game enters its fixed logic frames at `t`.
+    pub fn sync(&mut self, t: u64) -> Vec<String> {
+        let mut out = Vec::new();
+        self.flush_move(&mut out);
+        out.push(format!("{t}:sync"));
         out
     }
 
@@ -179,8 +222,76 @@ pub fn on() -> bool {
     *ON.get_or_init(|| RECORD.lock().unwrap().is_some())
 }
 
+/// The input clock: real time plus `offset`, or within fixed logic frames their own time.
+struct Clock {
+    offset: i64,
+    fixed: Option<Fixed>,
+}
+
+#[derive(Clone, Copy)]
+struct Fixed {
+    base: u64,
+    frames: u64,
+    fps: u32,
+}
+
+impl Fixed {
+    fn ms(&self) -> u64 {
+        self.base + self.frames * 1000 / self.fps as u64
+    }
+}
+
+static CLOCK: Mutex<Clock> = Mutex::new(Clock {
+    offset: 0,
+    fixed: None,
+});
+
+fn real_ms() -> i64 {
+    super::kernel32::start_time().elapsed().as_millis() as i64
+}
+
+/// The time for input items (recorded and replayed), ms.
+pub fn input_ms() -> u64 {
+    let c = CLOCK.lock().unwrap();
+    match c.fixed {
+        Some(f) => f.ms(),
+        None => (real_ms() + c.offset).max(0) as u64,
+    }
+}
+
+/// A game's fixed logic frames (`fps` a second): `frames` more have begun (0 at the first of a
+/// run of them). Their input time is the frames' own, so a replay gives the logic each input in
+/// the frame it was recorded in. The first of a run is a `sync` item (see the head).
+pub fn logic_frames(frames: u64, fps: u32) {
+    let mut c = CLOCK.lock().unwrap();
+    if let Some(f) = c.fixed.as_mut() {
+        f.frames += frames;
+        return;
+    }
+    let now = (real_ms() + c.offset).max(0) as u64;
+    // a replay goes on from the recording's time here
+    let base = super::window::script_sync().unwrap_or(now);
+    c.fixed = Some(Fixed { base, frames, fps });
+    drop(c);
+    if on() {
+        let mut r = RECORD.lock().unwrap();
+        if let Some(f) = r.as_mut() {
+            let lines = f.rec.sync(base);
+            write(f, lines);
+        }
+    }
+}
+
+/// Out of fixed logic frames: real time again, going on from the input time reached.
+pub fn real_time() {
+    let mut c = CLOCK.lock().unwrap();
+    if let Some(f) = c.fixed.take() {
+        c.offset = f.ms() as i64 - real_ms();
+    }
+}
+
 fn now() -> u64 {
-    super::kernel32::start_time().elapsed().as_millis() as u64
+    input_ms()
 }
 
 fn write(f: &mut File, lines: Vec<String>) {
@@ -201,6 +312,17 @@ pub fn input(i: &Input) {
     if matches!(i, Input::Close) {
         let _ = f.file.flush();
     }
+}
+
+/// The mouse's raw motion (what DirectInput's mouse gets).
+pub fn motion(dx: i32, dy: i32) {
+    if !on() {
+        return;
+    }
+    let mut r = RECORD.lock().unwrap();
+    let Some(f) = r.as_mut() else { return };
+    let lines = f.rec.motion(dx, dy, now());
+    write(f, lines);
 }
 
 /// The first real pad's controls, at every read of the pads.
@@ -264,8 +386,9 @@ mod tests {
             ),
             ["1000:Up*1500"]
         );
-        assert_eq!(r.event(&Input::Move(484, 303), 3000), ["3000:move@484,303"]);
-        assert!(r.event(&Input::Button(0, true), 3100).is_empty());
+        assert!(r.event(&Input::Move(480, 300), 3000).is_empty());
+        assert!(r.event(&Input::Move(484, 303), 3000).is_empty());
+        assert_eq!(r.event(&Input::Button(0, true), 3100), ["3000:move@484,303"]);
         assert_eq!(
             r.event(&Input::Button(0, false), 3200),
             ["3070:click@484,303*100"]

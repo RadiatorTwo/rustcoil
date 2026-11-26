@@ -41,6 +41,10 @@ pub enum Input {
     Cheat(usize),
     /// scripted only: a control of the scripted pad (`dinput::CONTROLS`) and its value
     Pad(usize, f32),
+    /// scripted only: where the game entered fixed logic frames when recorded (`record.rs`)
+    Sync,
+    /// scripted only: the mouse's raw motion (DirectInput's)
+    Motion(i32, i32),
 }
 
 struct App {
@@ -237,21 +241,46 @@ pub fn pump(wait: Duration) {
 /// hex), `pad@A*500` (a control of the scripted pad held, `dinput::CONTROLS`), `pad@LX=-1*1000`
 /// (its stick at a value, -1...1, y up). `<PREFIX>_INPUT=@file.txt` reads the items from a file (as
 /// `<PREFIX>_RECORD` writes them, `record.rs`); `#` starts a comment to the end of the line.
-fn scripted(input: &mut VecDeque<Input>) {
-    static SCRIPT: Mutex<Option<VecDeque<(u64, Input)>>> = Mutex::new(None);
+static SCRIPT: Mutex<Option<VecDeque<(u64, Input)>>> = Mutex::new(None);
+
+/// The game enters fixed logic frames: in a replay, the next `sync` item's time, from which the
+/// input clock goes on (`record::logic_frames`). The items before it are given at once.
+pub fn script_sync() -> Option<u64> {
+    if script_text().is_empty() {
+        return None;
+    }
     let mut s = SCRIPT.lock().unwrap();
     let script = s.get_or_insert_with(|| parse_script(script_text()));
-    let now = super::kernel32::start_time().elapsed().as_millis() as u64;
-    while script.front().is_some_and(|e| e.0 <= now) {
+    let k = script.iter().position(|e| matches!(e.1, Input::Sync))?;
+    let t = script[k].0;
+    script.remove(k);
+    for e in script.iter_mut().take(k) {
+        e.0 = e.0.min(t);
+    }
+    Some(t)
+}
+
+fn scripted(input: &mut VecDeque<Input>) {
+    let mut s = SCRIPT.lock().unwrap();
+    let script = s.get_or_insert_with(|| parse_script(script_text()));
+    let now = super::record::input_ms();
+    // a `sync` waits for the game to get there (`script_sync` takes it then)
+    while script
+        .front()
+        .is_some_and(|e| e.0 <= now && !matches!(e.1, Input::Sync))
+    {
         match script.pop_front().unwrap().1 {
             Input::Poke(a, v) => super::mem().wr32(a, v),
             Input::Cheat(k) => super::cheats::request(k),
             Input::Pad(k, v) => super::dinput::script(k, v),
+            Input::Motion(dx, dy) => super::dinput::motion(dx, dy),
             Input::Move(x, y) => {
-                // DirectInput's mouse moves by as much
+                // DirectInput's mouse moves by as much, unless the items have its own motion
                 static LAST: Mutex<Option<(i32, i32)>> = Mutex::new(None);
                 let (lx, ly) = LAST.lock().unwrap().replace((x, y)).unwrap_or((320, 240));
-                super::dinput::motion(x - lx, y - ly);
+                if !script_text().contains("motion@") {
+                    super::dinput::motion(x - lx, y - ly);
+                }
                 input.push_back(Input::Move(x, y));
             }
             i => input.push_back(i),
@@ -330,6 +359,8 @@ fn parse_script(text: &str) -> VecDeque<(u64, Input)> {
             {
                 ev.push((t, Input::Poke(a, v)));
             }
+        } else if let Some((dx, dy)) = what.strip_prefix("motion@").and_then(at) {
+            ev.push((t, Input::Motion(dx, dy)));
         } else if let Some((b, xy)) = what.split_once('@') {
             let (xy, hold) = xy
                 .split_once('*')
@@ -348,6 +379,8 @@ fn parse_script(text: &str) -> VecDeque<(u64, Input)> {
             ev.push((t + 30 + hold, Input::Button(b, false)));
         } else if what == "close" {
             ev.push((t, Input::Close));
+        } else if what == "sync" {
+            ev.push((t, Input::Sync));
         } else if what == "blur" || what == "focus" {
             ev.push((t, Input::Focus(what == "focus")));
         } else if let Some(k) = super::cheats::find(what) {
@@ -772,6 +805,16 @@ fn shot_path() -> Option<&'static String> {
         .as_ref()
 }
 
+/// `<PREFIX>_SHOT_MS`: the time between pictures (default 500 ms).
+fn shot_ms() -> u64 {
+    static MS: OnceLock<u64> = OnceLock::new();
+    *MS.get_or_init(|| {
+        recomp::config::env("SHOT_MS")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(500)
+    })
+}
+
 static LAST_SHOT: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 
 fn shot_due(force: bool) -> bool {
@@ -780,14 +823,20 @@ fn shot_due(force: bool) -> bool {
             || LAST_SHOT
                 .lock()
                 .unwrap()
-                .is_none_or(|t| t.elapsed() >= Duration::from_millis(500)))
+                .is_none_or(|t| t.elapsed() >= Duration::from_millis(shot_ms())))
 }
 
+/// Made into a PNG and written on a thread of its own: done in the presenting thread, every
+/// picture taken held the game up visibly.
 fn write_shot(px: &[u32], w: u32, h: u32) {
     *LAST_SHOT.lock().unwrap() = Some(std::time::Instant::now());
     if let Some(path) = shot_path() {
         let t = super::kernel32::start_time().elapsed().as_millis();
-        let _ = std::fs::write(path.replace("{t}", &format!("{t:06}")), png(px, w, h));
+        let path = path.replace("{t}", &format!("{t:06}"));
+        let px = px.to_vec();
+        std::thread::spawn(move || {
+            let _ = std::fs::write(path, png(&px, w, h));
+        });
     }
 }
 
@@ -1258,7 +1307,10 @@ impl App {
                 self.overlay_changed = false;
             }
             if let Some(path) = mark {
-                let _ = std::fs::write(path, png(&px, w, h));
+                let px = px.clone();
+                std::thread::spawn(move || {
+                    let _ = std::fs::write(path, png(&px, w, h));
+                });
             }
         }
     }
@@ -1384,7 +1436,9 @@ impl ApplicationHandler for App {
         // scripted run moves it by its own items)
         if let winit::event::DeviceEvent::MouseMotion { delta } = e {
             if self.focused && script_text().is_empty() && self.options.is_none() {
-                super::dinput::motion(delta.0.round() as i32, delta.1.round() as i32);
+                let (dx, dy) = (delta.0.round() as i32, delta.1.round() as i32);
+                super::record::motion(dx, dy);
+                super::dinput::motion(dx, dy);
             }
         }
     }

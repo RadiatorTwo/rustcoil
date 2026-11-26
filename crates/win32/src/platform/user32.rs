@@ -249,7 +249,7 @@ fn poll(wait: Duration) {
                     }
                 }
             }
-            Input::Focus(true) | Input::Poke(..) | Input::Cheat(_) | Input::Pad(..) => {}
+            Input::Focus(true) | Input::Poke(..) | Input::Cheat(_) | Input::Pad(..) | Input::Sync | Input::Motion(..) => {}
         }
     }
     let now = super::kernel32::ms_since_start();

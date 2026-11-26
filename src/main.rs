@@ -138,6 +138,7 @@ impl Game for MyGame {
                     options::anti_aliasing(),
                     options::textures(),
                     options::frame_rate_display(),
+                    frames::option(),
                 ],
             },
             options::Page {

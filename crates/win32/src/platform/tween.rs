@@ -108,8 +108,15 @@ impl LogicClock {
         *n += 1;
         let now = Instant::now();
         if now > due + frame {
-            // behind: on to the frame of now
-            *n = ((now - *start).as_nanos() / frame.as_nanos()) as u64;
+            if super::record::on() || !super::window::script_text().is_empty() {
+                // recorded or replayed: no frame left out (a frame of more than one step
+                // runs the logic otherwise, and a replay goes its own way): the clock goes on
+                // from now
+                *start = now - frame * *n as u32;
+            } else {
+                // behind: on to the frame of now
+                *n = ((now - *start).as_nanos() / frame.as_nanos()) as u64;
+            }
         }
         (*n, Duration::from_nanos(self.frame_ns * *n))
     }
@@ -144,12 +151,20 @@ impl Pacer {
             return;
         }
         let now = Instant::now();
-        let at = self.next.lock().unwrap().filter(|&t| t > now);
-        if let Some(t) = at {
-            sleep_until(t);
-        }
-        // the next one: a period after this, or after now if the game fell behind
-        *self.next.lock().unwrap() = Some(at.unwrap_or(now) + period);
+        let sched = *self.next.lock().unwrap();
+        let base = match sched {
+            Some(t) if t > now => {
+                sleep_until(t);
+                t
+            }
+            // a little late (a slower picture, Recoil's logic frames'): the grid kept, so the
+            // next comes sooner and the rate holds. Moved to now, each late one cost its lateness
+            // for good: 480 gave ~450 (the user, 2026-11-26).
+            Some(t) if now - t < period => t,
+            // fell behind: from now
+            _ => now,
+        };
+        *self.next.lock().unwrap() = Some(base + period);
     }
 
     /// As `pace`, each turn moved to the refreshes of the display (`refresh`: one of them and
