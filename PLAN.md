@@ -488,3 +488,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   copies against a reference). Our code's share 25 -> 18.5 %. The frame rate itself is too
   noisy to show 5 % while OBS runs. Next in our code: glide's flush (the driver, ~4 %),
   `glide::add` (~3 %), `pictures::noted` (~3 %).
+- Alias regions tried and dropped (2026-11-26): the `Cpu` state and guest memory in memory
+  flags of their own (disjoint regions, notrap), so Cranelift could keep state fields across
+  guest stores. `kran.txt` A/B: ~390 fps both ways (0-1 %, noise). Not worth the trap it sets:
+  one access with the wrong region and the game breaks silently (a float load of guest memory
+  tagged as `Cpu` gave the bounding box at 0x4526a0 a stale value: found by recompiling
+  halves of the functions with regions, checked by the last screenshot). Kept: test
+  `alias.rs` (a local written as float, then as integer, read as float). Next: x87 registers
+  across branches and loops (they are written back at every join, `x87_settle`).
