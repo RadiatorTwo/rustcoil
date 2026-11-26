@@ -35,3 +35,7 @@
 0x49a970 flares_pick_tested  the same for view 0x44d3f0, drops lights its test 0x498c90 finds hidden
 0x49b000 flare_draw  fastcall(index into 0x636c30): draws a flare's glow
 0x444ee0 ray_test  fastcall(node, result) + from xyz, to xyz: what the ray meets ([result] count)
+0x45b510 script_place  thiscall(command): an effect script's place command: a node (table [+0x114] at command+0x10) at a reference node (flag 2: [+0x74]) plus an offset (flag 8: command+0x18)
+0x44e340 node_set_position  thiscall(x, y, z): a node's position ([node+0x38] +0x54..+0x5c)
+0x4527c0 node_find  fastcall(node, name): a node by name in a model's tree
+0x422140 supports_load  the model's support00..03 into the vehicle data +0x1b4 (ground contact points)

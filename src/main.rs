@@ -16,6 +16,7 @@ mod hooks;
 mod hud;
 mod pictures;
 mod reticle;
+mod trails;
 mod wide;
 
 use recomp::smc::SmcSpec;
