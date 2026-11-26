@@ -64,7 +64,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
     not yet seen by hand
 - [x] gamepad in missions (2026-11-25): buttons bound to the game's commands (`PadMap`),
   left stick drives, right stick aims; tested by hand 2026-11-26, the menus by pad too
-- [x] release (tag `v*`): v0.1.0 2026-11-26 (Windows and Linux packages by .github/workflows/build.yml; the Windows package tested from a CD image)
+- [x] release (tag `v*`): v0.1.0 2026-11-26, v0.1.1 2026-11-27 (Windows and Linux packages by .github/workflows/build.yml; the Windows package tested from a CD image)
 
 ## Learned
 
