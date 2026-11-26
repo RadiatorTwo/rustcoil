@@ -55,11 +55,48 @@ copies yourself.
 - **Widescreen:** In missions you see more to the left and right. The HUD stays in the middle.
 - **Smooth:** The game runs at its correct speed and still shows as many pictures as your
   screen can display.
-- **Settings menu (F10):** picture, a soft glow around bright things, keys and gamepad.
+- **Settings menu (F10):** All new options in one place, see below.
 - **Gamepad:** Drive with the left stick, aim with the right stick. Every button can be
   changed. The menus work with the pad too.
 - **Straight into the game:** No launcher and no "insert CD" message.
 - **Frame rate display:** F12 shows it.
+
+## The settings menu (F10)
+
+Press **F10** at any time, in the menus or in a mission. The game pauses while the menu is
+open. Every change works at once and is saved for the next start.
+
+How to use it: Up and Down choose a line, Left and Right change it. Page Up and Page Down (or
+Tab) switch between the pages. Escape or F10 closes the menu. The mouse works too, and so does
+the gamepad.
+
+**Display**
+
+| Setting | What it does |
+|---|---|
+| Fullscreen | The game fills the whole screen without a border. Alt+Enter does the same. |
+| Resolution | The size of the window and of the picture. "Auto" uses the window's size. |
+| Widescreen | Missions fill a wide screen and show more to the sides. The HUD stays in the middle. |
+| Anti-aliasing | Smooth edges instead of jagged ones. |
+| Textures | Sharper textures from a distance: Original, Trilinear or Anisotropic. |
+| Frame rate display | Shows how many pictures per second you get. F12 does the same. |
+
+**Effects**
+
+| Setting | What it does |
+|---|---|
+| Bloom | A soft glow around fire, explosions and shots: Off, Low, Medium or High. |
+
+**Keys**
+
+Every command of the game with its key. Choose a command, press Enter and then the new key.
+Delete removes a key.
+
+**Gamepad**
+
+Every command of the game with its gamepad button. Choose a command, press A (or Enter) and
+then the new button. X (or Delete) removes a button. The sticks are always for driving and
+aiming.
 
 Default gamepad buttons (Xbox layout):
 
