@@ -38,7 +38,10 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 - [x] high frame rate (GUIDE 8b): logic fixed at 60 a second, pictures at the display's
   refresh rate between logic frames, interpolated (objects and camera)
 - [ ] speed (GUIDE 8a): ~400 to ~850 pictures a second unpaced in the first mission
-  (2026-11-22); next: 0x487f90, 0x477bb0, 0x4b0370, 0x47f050 (~35 %, spread thin)
+  (2026-11-22); next: 0x487f90, 0x477bb0, 0x4b0370, 0x47f050 (~35 %, spread thin).
+  2026-11-26, the replay `kran.txt` unpaced (firing at the crane, bloom, MSAA 8): ~245-290
+  before, ~275-320 after the lifter's x87 TOP from one read per run and the status word in a
+  variable (see Learned). Next: fcom + fnstsw + test ah + jcc as one compare and branch
 - [x] frame rate display: F12 (setting `ShowFps`, saved in the registry; the kit's `stats.rs`)
 - [x] high resolution, widescreen, settings (resolution: drawn at the window's size or
   `RenderSize`; widescreen Hor+ in missions, `src/wide.rs`, 2026-11-23; the settings menu
@@ -464,3 +467,16 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   any other 0, blended like the colour (what is drawn in front covers it); cleared with the
   colour (grBufferClear). The bloom's first pass weighs the bright part by the mask. Checked
   in `kran.txt` (the glows and shots still glow) and `spur.txt` (the sand no longer hazy).
+- Speed in the lifter (2026-11-26, the user: effects will come, more room needed). The profile
+  is flat (no instruction over 1 %): the time is in what the lifter makes of x87 code. 0x487f90
+  (1139 instructions) became 115 KB of machine code. (1) Each fld / fstp moved TOP by a
+  dependent `(top +- 1) & 7`, a chain along a whole run: now a run reads TOP once
+  (`x87::Cache::base`) and every later TOP and slot is that plus a constant; only the run's
+  last TOP is stored. (2) The status word was loaded and stored in memory at every fcom and
+  fnstsw: now a Cranelift variable (`Lifter::fsw`) like TOP, in memory only across calls and
+  exits (`load_state` / `store_state`). (3) The rare ways of an operation's rounding (zero
+  check, `rt_fpu_round`) are cold blocks, at the function's end. Leaving out the dry run made
+  no measurable difference. Test: `x87_cache` now also has fcom and fnstsw into memory (TOP
+  and the condition codes in the middle of a run); two NaNs in an output count as equal (an
+  operation on two NaNs gives one of them by the operands' order, which Cranelift may swap).
+  Checked: the replay ends in the same game state.
