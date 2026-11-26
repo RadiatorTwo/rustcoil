@@ -29,6 +29,7 @@ jobs:
           $name = "rustcoil-$env:VERSION-windows-x64"
           New-Item -ItemType Directory $name | Out-Null
           Copy-Item target/release/rustcoil.exe, README.md, LICENSE $name
+          Copy-Item crates/indeo/COPYING "$name/COPYING-indeo.txt"
           Copy-Item -Recurse dist/game_files $name
           Compress-Archive -Path $name -DestinationPath "$name.zip"
       - uses: actions/upload-artifact@v4
@@ -53,6 +54,7 @@ jobs:
           name="rustcoil-$VERSION-linux-x64"
           mkdir "$name"
           cp target/release/rustcoil README.md LICENSE "$name"
+          cp crates/indeo/COPYING "$name/COPYING-indeo.txt"
           cp -r dist/game_files "$name"
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
