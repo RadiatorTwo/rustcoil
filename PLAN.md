@@ -494,5 +494,15 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   one access with the wrong region and the game breaks silently (a float load of guest memory
   tagged as `Cpu` gave the bounding box at 0x4526a0 a stale value: found by recompiling
   halves of the functions with regions, checked by the last screenshot). Kept: test
-  `alias.rs` (a local written as float, then as integer, read as float). Next: x87 registers
-  across branches and loops (they are written back at every join, `x87_settle`).
+  `alias.rs` (a local written as float, then as integer, read as float).
+- x87 control word in variables (2026-11-26): `fcw` and its tests for the arithmetic
+  (`set_fcw`: usual, 24 bits to nearest or truncating, what to add) are Cranelift variables,
+  made at the function's start, after calls and at fldcw / fninit, no longer per run and
+  block (outside the versioned runs, every operation in branchy code such as 0x487f90 loaded
+  the control word, made the tests anew and stored two of them to `Cpu::x87_mode`, now gone).
+  `kran.txt`, three A/B pairs: ~388 against ~382 fps; 0x487f90's share 15.6 -> 14.7 %,
+  0x4b0370's 8.1 -> 7.6 %. Tried and dropped: x87 registers kept across direct jumps (a shape
+  per jump target, stores and loads on edges that differ): correct, but no gain beyond the
+  control word's (the hot joins hold few values; the hottest instructions of 0x487f90 are
+  integer loads chasing pointers). Kept from it: `x87_cache` now also has joins with other
+  values on their two edges (`Choose`) and with the stack one deeper on one (`Uneven`).
