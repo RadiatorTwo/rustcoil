@@ -69,13 +69,14 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
     window (its own process, `rustcoil --splash`) draws with the game's GL code, which asks
     the setting ShowFps (since 76e3813), and settings read the registry from the game
     folder. Settings now give their default where no game folder is known. In v0.1.2; recomp_kit
-    ecdbfb7. Not yet tested on Linux.
-  - [ ] v0.1.2 on Linux: black window, the game hangs before the first video. The present
+    ecdbfb7. Tested on Linux 2026-11-27.
+  - [x] v0.1.2 on Linux: black window, the game hangs before the first video. The present
     thread died: "cannot make the shared GL context current: ... BadAccess" (EGL_BAD_ACCESS,
     12290). EGL and GLX let a window surface be current in one thread at a time (WGL does not
     mind). Off Windows a context now holds the surface only while it draws into the window
     (under PAINT) and is current surfaceless otherwise (`gl.rs`: take_surface,
-    release_surface); the same fix lies uncommitted in motorhead_rust. Not yet tested on Linux.
+    release_surface); the same fix lies uncommitted in motorhead_rust. In v0.1.2 (the tag moved), recomp_kit
+    70be3a7. Tested on Linux 2026-11-27: the game runs.
 
 ## Learned
 
