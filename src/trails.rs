@@ -9,7 +9,10 @@
 //! (`exhaust_trail_fade`) are left where it was. The morph nodes are the tracks' joints, x
 //! +-1.55, while the tracks' middle lies about 0.40 further out (their bounding box in the
 //! joint's space, node+0x74..+0x88): the streaks lay about a fifth too close together (the
-//! original's too). Now the offset's x is the middle of the reference node's box. A fix of the
+//! original's too). And at y 0.2 above the joint (0.55 above the tank's bottom) they came out
+//! of the tracks' middle, the box reaching from -0.35 to 0.6. Now the offset's x is the middle
+//! of the reference node's box and its y the box's bottom (where the tracks touch the ground,
+//! `GROUND_LIFT` above it). A fix of the
 //! original's: the settings menu's page Fixes turns it off (`option`, setting `FixTrails`); the
 //! commands' own offsets are kept to be put back.
 
@@ -23,8 +26,11 @@ use win32::platform::setting::Setting;
 
 static FIX: Setting = Setting::new("FixTrails", "FIX_TRAILS", true);
 
-/// The place commands changed: their own offset's x (bits).
-static OWN_X: Mutex<Option<HashMap<u32, u32>>> = Mutex::new(None);
+/// The place commands changed: their own offset's x and y (bits).
+static OWN: Mutex<Option<HashMap<u32, [u32; 2]>>> = Mutex::new(None);
+
+/// How far above the tracks' bottom the trail starts (the tank's units).
+const GROUND_LIFT: f32 = 0.05;
 
 /// The settings menu's row.
 pub fn option() -> Row {
@@ -72,18 +78,20 @@ fn under_tracks(instance: u32, command: u32) {
     if target == 0 || name(target) != "exhaust_trail" || !name(reference).ends_with("_morphs") {
         return;
     }
-    let mut own = OWN_X.lock().unwrap();
-    let own_x = *own
+    let mut own = OWN.lock().unwrap();
+    let own = *own
         .get_or_insert_with(HashMap::new)
         .entry(command)
-        .or_insert_with(|| m.rd32(command + 0x18));
-    let x = if FIX.get() {
-        let x = |o: u32| f32::from_bits(m.rd32(reference + o));
-        ((x(0x74) + x(0x80)) / 2.0).to_bits()
+        .or_insert_with(|| [m.rd32(command + 0x18), m.rd32(command + 0x1c)]);
+    let [x, y] = if FIX.get() {
+        let b = |o: u32| f32::from_bits(m.rd32(reference + o));
+        let (x, y) = ((b(0x74) + b(0x80)) / 2.0, b(0x78) + GROUND_LIFT);
+        [x.to_bits(), y.to_bits()]
     } else {
-        own_x
+        own
     };
     m.wr32(command + 0x18, x);
+    m.wr32(command + 0x1c, y);
 }
 
 /// A node's name (at its start).

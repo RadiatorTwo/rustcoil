@@ -451,3 +451,7 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   and `Exhaust trail fix` (`trails::option`, `FixTrails`; the commands' own offsets are kept
   and put back when off). Checked: with the light fix off the glow flickers again in
   `kran.txt` (dark in 17 of 41 pictures while firing).
+- Exhaust trails lower (2026-11-26, the user: they came out of the tracks' middle): the place
+  command's y offset (0.2 above the joint, 0.55 above the tracks' bottom) is now the joint's
+  box bottom + 0.05 (`trails::GROUND_LIFT`), with the Exhaust trail fix. Checked in `spur.txt`:
+  the streaks start on the ground at the tracks' bottom.
