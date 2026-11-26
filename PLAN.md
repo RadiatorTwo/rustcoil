@@ -480,3 +480,11 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   and the condition codes in the middle of a run); two NaNs in an output count as equal (an
   operation on two NaNs gives one of them by the operands' order, which Cranelift may swap).
   Checked: the replay ends in the same game state.
+- rep movs / rep stos in the code (2026-11-26): 20 % of the frame was in our Rust code (link
+  map, GUIDE 8a), 5 % of it `rt_string`: ~22 million mostly short rep movsd / stosd / movsb
+  (memcpy, memset) in two minutes, each a call with the state stored and loaded. Forward (DF
+  clear) they are now a loop in the lifted code (`Lifter::rep_move`, element by element as the
+  CPU does); backwards still the call. Test `string.rs` (sizes, both directions, overlapping
+  copies against a reference). Our code's share 25 -> 18.5 %. The frame rate itself is too
+  noisy to show 5 % while OBS runs. Next in our code: glide's flush (the driver, ~4 %),
+  `glide::add` (~3 %), `pictures::noted` (~3 %).
