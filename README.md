@@ -9,8 +9,10 @@ Built with [recomp_kit](https://github.com/RadiatorTwo/recomp_kit).
 ## Playing
 
 You need the PC version of the game. Download the release, unpack it, and put your CD image
-(.iso or .bin) next to `rustcoil.exe` or copy the CD into `game_files` (see
-`game_files/README.txt`). Start `rustcoil.exe`.
+(.cue/.bin, .iso, .img or .mdf) next to `rustcoil.exe` or into `game_files`, or copy the CD or
+your installed game into `game_files` (see `game_files/README.txt`). Start `rustcoil.exe`: at
+the first start it unpacks the game from the CD's installer archive itself. The music comes
+from the CD's audio tracks: keep the .cue image for it.
 
 ## Building
 

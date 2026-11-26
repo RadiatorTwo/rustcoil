@@ -50,7 +50,10 @@ Details and the history: PLAN.md, section "Learned".
 - EXE: `recoil3dfx.exe` (Glide 2), an MFC 4.2 application. `Game::dlls` loads MSVCRT.DLL,
   MSVCP50.DLL, mfc42.dll (own bases) and messages.dll (at 0x5f300000; it wants 0x10000000,
   inside our heap). They are compiled with the EXE (`platform/module.rs`).
-- CD check: drive D:, label `RECOIL`, `D:\video\intro_01.avi`. DirectX 6 check at 0x40c38d.
+- CD check: drive D:, label `RECOIL`, `D:\video\intro_01.avi` (patched to pass at 0x42e78a:
+  runs without videos). DirectX 6 check at 0x40c38d.
+- Setup (`crates/win32/src/setup.rs`): from a CD image (.cue/.bin, .iso, .img, .mdf), a copied
+  CD (both: data1.cab unpacked, `Identity::cab_left_out`) or an installed game folder.
 - Launcher: the main window (GAMEBMP + menu) is skipped. The hook on CRecoilApp::Run (0x442d50,
   `src/hooks.rs`) posts WM_COMMAND Card 1 (0x9c72), 640x480 (0x209), Start (0x68).
 - Fonts: built by the game with GDI text into a DIB (`platform/text.rs`, Eurostile .ttf).

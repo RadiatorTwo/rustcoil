@@ -18,7 +18,7 @@ mod reticle;
 mod wide;
 
 use recomp::smc::SmcSpec;
-use recomp::ver::Version;
+use recomp::ver::{Us, Version};
 use win32::platform::options;
 use win32::{Game, GlideExt, Identity};
 
@@ -47,12 +47,26 @@ static ID: Identity = Identity {
     // the key Westwood's installer made (the EXE reads SOFTWARE\Westwood\Recoil)
     registry_key: r"HKEY_LOCAL_MACHINE\Software\Westwood\Recoil",
     registry_seed: &[],
-    // files and folders next to the EXE without which the game cannot start
-    required: &["zbd", "maps"],
-    // other files kept in the game folder (saves, the game's own settings)
-    game_files: &[],
-    // a file in the CD's video folder, if the game has videos there
-    video_marker: None,
+    // files and folders next to the EXE without which the game cannot start (the MFC and C
+    // runtime the installer put beside the game: `dlls`)
+    required: &["zbd", "maps", "messages.dll", "MSVCRT.DLL", "MSVCP50.DLL", "mfc42.dll"],
+    // other files kept in the game folder: sounds by fidelity (an installed game has one),
+    // fonts, saves, the game's logs
+    game_files: &[
+        "soundsh.zbd",
+        "soundsm.zbd",
+        "soundsl.zbd",
+        "eurosti.ttf",
+        "eurostib.ttf",
+        "SavedGames",
+        "recoil.err",
+        "recoil.out",
+    ],
+    // a file in the CD's video folder (the CD check looks for D:\video\intro_01.avi)
+    video_marker: Some("intro_01.avi"),
+    // the CD holds the game only in data1.cab: every group but the installer's, the A3D and
+    // Indeo drivers and the videos (the CD's Video folder has them)
+    cab_left_out: Some(&["Uninstal Files", "A3D DLLs", "Indeo 5 codec", "AVI Files"]),
     // network discovery (DirectPlay over UDP): 8 bytes of the game's own, question and answer
     net_magic: (b"GAMENET?", b"GAMENET!"),
     log_file: "rustcoil.log",
@@ -83,6 +97,16 @@ impl Game for MyGame {
             ("mfc42.dll", 0x5f40_0000),
             // the game's messages (it wants 0x10000000, inside our heap)
             ("messages.dll", 0x5f30_0000),
+        ]
+    }
+
+    fn code_patches(&self) -> Vec<(u32, &'static [u8], &'static [u8])> {
+        vec![
+            // the CD check at the start (0x42e4c0): 0x4a5aa0 looks for video\intro_01.avi on
+            // every CD drive, and without it the game asks for the CD again and again. The
+            // CD's files come from game_files (the videos are optional there): the check
+            // always passes (jne -> jmp; its answer is not used further)
+            (Us(0x42e78a).at(), &[0x75, 0x2d], &[0xeb, 0x2d]),
         ]
     }
 

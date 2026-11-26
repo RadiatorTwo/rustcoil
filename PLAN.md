@@ -1,7 +1,7 @@
 # PLAN — Recoil
 
 The way through: recomp_kit's docs/GUIDE.md. Tick off what is done, note what was learned.
-Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes went back into recomp_kit 1dbe3cf, the frame rate work (2026-11-22) into e5137f9, the speed work into 05224a2 and fbd499f, the missing imports (2026-11-23) into 74e63c5, glide::set_rows (2026-11-25) into ca39957, the settings menu into 1476b4c, its binding rows and the pad in it into a037d9d.
+Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes went back into recomp_kit 1dbe3cf, the frame rate work (2026-11-22) into e5137f9, the speed work into 05224a2 and fbd499f, the missing imports (2026-11-23) into 74e63c5, glide::set_rows (2026-11-25) into ca39957, the settings menu into 1476b4c, its binding rows and the pad in it into a037d9d, the setup from InstallShield cabinets (2026-11-26) into ae32eaa.
 
 ## 1. Start
 
@@ -25,7 +25,16 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
 
 ## 4. Port
 
-- [ ] setup from the CD or a CD image (`required`, `video_marker`)
+- [x] setup from the CD or a CD image (2026-11-26, `crates/win32/src/setup.rs`): a CD image
+  (.cue/.bin, .iso, .img, .mdf with 2448-byte sectors) in game_files or next to rustcoil.exe,
+  the CD's contents copied into game_files, or an installed game folder. The game is only in
+  data1.cab: installed from it (`Identity::cab_left_out`: every group but the uninstaller,
+  A3D, Indeo and the AVI group; the CD's Video folder becomes game_files\Video), each file
+  under `.part` until whole, the EXE last; an installed game missing the MFC DLLs gets them
+  from the image or CD when there. Only an EXE of a known version counts (the CD's Westwood
+  launcher is also called Recoil3Dfx.exe). The CD check is patched to pass (0x42e78a): the
+  game runs without videos. Tested: .cue/.bin, .iso, .mdf next to the program, copied CD,
+  installed folder with and without DLLs, no videos.
 - [x] high frame rate (GUIDE 8b): logic fixed at 60 a second, pictures at the display's
   refresh rate between logic frames, interpolated (objects and camera)
 - [ ] speed (GUIDE 8a): ~400 to ~850 pictures a second unpaced in the first mission
