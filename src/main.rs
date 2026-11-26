@@ -9,6 +9,7 @@
 mod controls;
 mod cut;
 mod draw;
+mod flares;
 mod frames;
 mod gamepad;
 mod hooks;
@@ -49,7 +50,14 @@ static ID: Identity = Identity {
     registry_seed: &[],
     // files and folders next to the EXE without which the game cannot start (the MFC and C
     // runtime the installer put beside the game: `dlls`)
-    required: &["zbd", "maps", "messages.dll", "MSVCRT.DLL", "MSVCP50.DLL", "mfc42.dll"],
+    required: &[
+        "zbd",
+        "maps",
+        "messages.dll",
+        "MSVCRT.DLL",
+        "MSVCP50.DLL",
+        "mfc42.dll",
+    ],
     // other files kept in the game folder: sounds by fidelity (an installed game has one),
     // fonts, saves, the game's logs
     game_files: &[

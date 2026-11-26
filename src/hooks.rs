@@ -25,6 +25,7 @@ pub fn all() -> Vec<(u32, Hook)> {
     v.extend(crate::reticle::hooks());
     v.extend(crate::hud::hooks());
     v.extend(crate::cut::hooks());
+    v.extend(crate::flares::hooks());
     v
 }
 

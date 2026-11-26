@@ -30,3 +30,8 @@
 0x4b79c0 sprite_step  thiscall(time step): a HUD sprite's picture step; flags +0xc: 2 static (drawn when 4 or 8 asks), 0x10 hidden
 0x4a5aa0 find_on_drives  fastcall(drive type, name): the first drive of that type (5: CD) with <drive>name ("%s%s" into 0x56f2f8, _stat), that string or 0
 0x42e78a cd_check  in 0x42e4c0: find_on_drives(5, "video\intro_01.avi"), else a message box asks for the CD (patched to always pass)
+0x49a880 light_add  thiscall: adds a light to the picture's lights (0x633964, 20 bytes each, count 0x633960, at most 650)
+0x49aa10 flares_pick  fastcall: the lights with a flare (+0x10, its +0xc) among the first 64 into 0x636c30 (64 pointers), count 0x636c2c; view 0x44d650
+0x49a970 flares_pick_tested  the same for view 0x44d3f0, drops lights its test 0x498c90 finds hidden
+0x49b000 flare_draw  fastcall(index into 0x636c30): draws a flare's glow
+0x444ee0 ray_test  fastcall(node, result) + from xyz, to xyz: what the ray meets ([result] count)

@@ -423,3 +423,14 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   picture must be done within a refresh (2.08 ms at 480 Hz), a late one waited for the next,
   and 480 gave ~200 a second. Now 480 gives what Unlimited gives where the game cannot draw
   faster (~300 in the replay `kiste3` at the crane, the dry run included).
+- The lighthouse's glow flickered while the player fired (2026-11-26, the user; the original
+  does too). The drawing collects the picture's lights (0x633964, 20 bytes each, count
+  0x633960, room for 650, added by 0x49a880); after the world 0x49aa10 (view 0x44d650, a ray
+  0x444ee0 tests each) or 0x49a970 (view 0x44d3f0) picks those with a flare into 64 pointers
+  (0x636c30), drawn by 0x49b000. Both look only at the first 64 lights. Each shot and its
+  sparks bring about 30 lights before the lighthouse's: from the third shot on it lay beyond
+  64. Found by logging the triangles drawn where the glow is (caller 0x4b17b3 in 0x44d650),
+  then the ray (never hit) and the lights. `flares.rs` moves the lights with a flare to the
+  list's front first. Also the dry run (crates) collected the lights a second time: `render`
+  puts their count back after it. Checked with the user's recording `kran.txt`: the glow is
+  in all 230 pictures while firing (before: gone in about half).

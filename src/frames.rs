@@ -140,16 +140,19 @@ fn logic(c: &mut Cpu) {
 
 /// Every picture (the logic frame's own too) shows the game a frame late, where it is when the
 /// picture is shown. A logic frame's picture first runs the drawing dry where things are now:
-/// what it works out for the logic it works out from there (`pictures`, head).
+/// what it works out for the logic it works out from there (`pictures`, head). The lights the
+/// dry run collects are dropped again: the picture collects its own (`flares`).
 fn render(c: &mut Cpu) {
     let alpha = CLOCK.alpha(PACER.next_shown());
     if !picture_now() && alpha.is_some_and(|a| a < 256) {
         let saved = win32::platform::tween::save(c);
+        let lights = crate::flares::light_count();
         win32::platform::glide::set_dry(true);
         crate::wide::views_begin();
         call_original(c, RENDER.at());
         crate::wide::views_end();
         win32::platform::glide::set_dry(false);
+        crate::flares::set_light_count(lights);
         win32::platform::tween::restore(c, &saved);
     }
     crate::wide::views_begin();
