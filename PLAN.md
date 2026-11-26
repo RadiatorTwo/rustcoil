@@ -1,7 +1,7 @@
 # PLAN — Recoil
 
 The way through: recomp_kit's docs/GUIDE.md. Tick off what is done, note what was learned.
-Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes went back into recomp_kit 1dbe3cf, the frame rate work (2026-11-22) into e5137f9, the speed work into 05224a2 and fbd499f, the missing imports (2026-11-23) into 74e63c5, glide::set_rows (2026-11-25) into ca39957, the settings menu into 1476b4c, its binding rows and the pad in it into a037d9d, the setup from InstallShield cabinets (2026-11-26) into ae32eaa, bloom with the glow mask into cc1908c, the x87 speed in the lifter into 6e729cd, rep movs / stos in the code into 80ba0a4.
+Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes went back into recomp_kit 1dbe3cf, the frame rate work (2026-11-22) into e5137f9, the speed work into 05224a2 and fbd499f, the missing imports (2026-11-23) into 74e63c5, glide::set_rows (2026-11-25) into ca39957, the settings menu into 1476b4c, its binding rows and the pad in it into a037d9d, the setup from InstallShield cabinets (2026-11-26) into ae32eaa, bloom with the glow mask into cc1908c, the x87 speed in the lifter into 6e729cd, rep movs / stos in the code into 80ba0a4, the x87 control word in variables (with the tests alias.rs and x87_cache's joins) into 1cea7de.
 
 ## 1. Start
 
