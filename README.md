@@ -2,6 +2,8 @@
 
 Play **Recoil** (1999) on today's computers, on Windows and Linux.
 
+> **Work in progress.** This port still has lots of problems. I'm working on it.
+
 rustcoil is not an emulator. It takes your own copy of the game and translates its program
 into native code for your computer when you start it. Everything the game expects from an
 old Windows PC (3dfx graphics, DirectX, sound, CD music) is rebuilt in Rust. You need your
