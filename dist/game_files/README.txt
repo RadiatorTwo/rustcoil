@@ -1,25 +1,19 @@
-Put an image of your Recoil CD next to rustcoil.exe (Linux: rustcoil),
-or put your copy of the game (PC version) into this folder. Any of these:
+Put your Recoil CD here or next to rustcoil.exe (on Linux: rustcoil).
+These work:
 
-  - a CD image: .cue with its .bin files, .iso, .img (CloneCD) or .mdf (Alcohol)
-  - the contents of the CD, copied into a folder here
+  - an image of the CD: .cue with its .bin files, .iso, .img or .mdf
+  - the files of the CD, copied into a folder here
   - your installed game folder (C:\Westwood\Recoil)
 
-At its next start rustcoil finds the game, checks that it is a version
-this port knows, and sets it up here:
+Then start rustcoil. The first start unpacks the game from the CD by
+itself, just like the old setup program did, and puts it here:
 
-  Recoil\       the game's EXE and data (and your settings and saved games)
-  Video\        the CD's videos
+  Recoil\       the game, your settings and your saved games
+  Video\        the videos of the CD
 
-The CD holds the game in its installer's archive (data1.cab): rustcoil
-unpacks it itself, as the CD's setup would. Your installed game folder
-works too; files its installer put elsewhere (the MFC DLLs) are taken from
-the CD image or the CD's contents when they are here as well.
+Music: The music comes from the audio tracks of the CD. Keep the .cue
+image with its .bin files, then you have music. An .iso has no audio
+tracks, so the game stays silent. Without the videos the game still runs.
 
-Music: the game plays its music from the CD's audio tracks. Keep the .cue
-image (with its .bin files) here or next to rustcoil.exe; an .iso has no
-audio tracks, the game then runs without music. Without videos it runs
-without them.
-
-Nothing in this folder is ever deleted: remove other copies yourself once
-the game runs (keep the .cue image for the music).
+Nothing in this folder is ever deleted. Once the game runs, you can
+remove other copies yourself. Keep the .cue image for the music.
