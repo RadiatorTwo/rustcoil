@@ -155,6 +155,10 @@ impl Game for MyGame {
                 rows: vec![options::bloom()],
             },
             options::Page {
+                title: "Fixes",
+                rows: vec![flares::option(), trails::option()],
+            },
+            options::Page {
                 title: "Keys",
                 rows: controls::rows(),
             },

@@ -89,6 +89,15 @@ the gamepad.
 |---|---|
 | Bloom | A soft glow around fire, explosions and shots: Off, Low, Medium or High. |
 
+**Fixes**
+
+Bugs of the original game, fixed. Both are on. Turn one off to see the game as it was.
+
+| Setting | What it does |
+|---|---|
+| Light count fix | The game draws the glow of only the first 64 lights. Shots bring many lights, so the lighthouse's glow flickered while you fired. Now it stays. |
+| Exhaust trail fix | The light streaks behind the tank now run behind its tracks. In the original they lie too close together. |
+
 **Keys**
 
 Every command of the game with its key. Choose a command, press Enter and then the new key.

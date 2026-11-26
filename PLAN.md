@@ -446,3 +446,8 @@ Framework in `crates/`: copied from recomp_kit 7344d58 2026-11-21; its changes w
   ground contact points (`support00`..`03`, vehicle data +0x1b4): widened in a test, the
   streaks stayed. `trails.rs` sets the offset's x to the box's middle. Checked: the streaks
   run behind the tracks.
+- Settings menu page Fixes (2026-11-26, the user): bugs of the original that we fix, each on
+  by default and off to compare: `Light count fix` (`flares::option`, setting `FixFlares`)
+  and `Exhaust trail fix` (`trails::option`, `FixTrails`; the commands' own offsets are kept
+  and put back when off). Checked: with the light fix off the glow flickers again in
+  `kran.txt` (dark in 17 of 41 pictures while firing).

@@ -9,11 +9,32 @@
 //! (`exhaust_trail_fade`) are left where it was. The morph nodes are the tracks' joints, x
 //! +-1.55, while the tracks' middle lies about 0.40 further out (their bounding box in the
 //! joint's space, node+0x74..+0x88): the streaks lay about a fifth too close together (the
-//! original's too). Now the offset's x is the middle of the reference node's box.
+//! original's too). Now the offset's x is the middle of the reference node's box. A fix of the
+//! original's: the settings menu's page Fixes turns it off (`option`, setting `FixTrails`); the
+//! commands' own offsets are kept to be put back.
 
 use recomp::rt::{Cpu, ECX, ESP, Hook, call_original};
 use recomp::ver::Us;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use win32::platform::mem;
+use win32::platform::options::Row;
+use win32::platform::setting::Setting;
+
+static FIX: Setting = Setting::new("FixTrails", "FIX_TRAILS", true);
+
+/// The place commands changed: their own offset's x (bits).
+static OWN_X: Mutex<Option<HashMap<u32, u32>>> = Mutex::new(None);
+
+/// The settings menu's row.
+pub fn option() -> Row {
+    Row::on_off(
+        "Exhaust trail fix",
+        "The streaks behind the tank run behind its tracks (the original's too close)",
+        || FIX.get(),
+        |on| FIX.set(on),
+    )
+}
 
 /// thiscall(command): an effect script's place command.
 const PLACE: Us = Us(0x45b510);
@@ -51,9 +72,18 @@ fn under_tracks(instance: u32, command: u32) {
     if target == 0 || name(target) != "exhaust_trail" || !name(reference).ends_with("_morphs") {
         return;
     }
-    let x = |o: u32| f32::from_bits(m.rd32(reference + o));
-    let middle = (x(0x74) + x(0x80)) / 2.0;
-    m.wr32(command + 0x18, middle.to_bits());
+    let mut own = OWN_X.lock().unwrap();
+    let own_x = *own
+        .get_or_insert_with(HashMap::new)
+        .entry(command)
+        .or_insert_with(|| m.rd32(command + 0x18));
+    let x = if FIX.get() {
+        let x = |o: u32| f32::from_bits(m.rd32(reference + o));
+        ((x(0x74) + x(0x80)) / 2.0).to_bits()
+    } else {
+        own_x
+    };
+    m.wr32(command + 0x18, x);
 }
 
 /// A node's name (at its start).

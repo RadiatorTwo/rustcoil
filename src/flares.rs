@@ -9,11 +9,26 @@
 //! lighthouse's in the list: from the third shot on its light lay beyond 64 and its glow was
 //! left out in that picture, so it flickered while the player fired (the original does too).
 //! Now the lights with a flare are moved to the list's front first (their order kept), so the
-//! 64 places go to flares.
+//! 64 places go to flares. A fix of the original's: the settings menu's page Fixes turns it
+//! off (`option`, setting `FixFlares`).
 
 use recomp::rt::{Cpu, Hook, call_original};
 use recomp::ver::Us;
 use win32::platform::mem;
+use win32::platform::options::Row;
+use win32::platform::setting::Setting;
+
+static FIX: Setting = Setting::new("FixFlares", "FIX_FLARES", true);
+
+/// The settings menu's row.
+pub fn option() -> Row {
+    Row::on_off(
+        "Light count fix",
+        "Past 64 lights glows stay on (the lighthouse's flickered while firing)",
+        || FIX.get(),
+        |on| FIX.set(on),
+    )
+}
 
 /// The picture's lights: count, then 20 bytes each.
 const LIGHT_COUNT: Us = Us(0x633960);
@@ -41,12 +56,16 @@ pub fn set_light_count(n: u32) {
 }
 
 fn pick_flares(c: &mut Cpu) {
-    flares_first();
+    if FIX.get() {
+        flares_first();
+    }
     call_original(c, PICK_FLARES.at());
 }
 
 fn pick_flares_tested(c: &mut Cpu) {
-    flares_first();
+    if FIX.get() {
+        flares_first();
+    }
     call_original(c, PICK_FLARES_TESTED.at());
 }
 
